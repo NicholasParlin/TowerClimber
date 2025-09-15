@@ -3,19 +3,15 @@ using System.Collections.Generic;
 using UnityEngine;
 using System.Linq;
 
-// This component is specific to the player and handles their input for using skills,
-// skill learning progression, and save/load functionality.
+// This component is specific to the player and handles their skill learning progression,
+// save/load functionality, and the logic for using skills. It is controlled by the PlayerInputManager.
 public class PlayerSkillManager : SkillManagerBase
 {
     [Header("Player-Specific Settings")]
     [Tooltip("The skills the player knows at the very start of a new game.")]
     [SerializeField] private List<Skill> _startingSkills = new List<Skill>();
 
-    [Header("Skill Input Bindings")]
-    [Tooltip("Set up which keys correspond to which skills here.")]
-    [SerializeField] private List<SkillBinding> skillBindings = new List<SkillBinding>();
-
-    // Events for the movement system to subscribe to.
+    // Events for the movement system to listen to.
     public event Action OnSkillActivationStart;
     public event Action OnSkillActivationEnd;
 
@@ -24,8 +20,6 @@ public class PlayerSkillManager : SkillManagerBase
     private Dictionary<SkillAcquisitionCategory, int> _skillCapsPerCategory = new Dictionary<SkillAcquisitionCategory, int>();
 
     #region Save System Integration
-
-    // This is the data structure that will be saved to a file.
     [System.Serializable]
     public class SaveData
     {
@@ -39,7 +33,7 @@ public class PlayerSkillManager : SkillManagerBase
             {
                 foreach (var skill in skillList)
                 {
-                    learnedSkillNames.Add(skill.name); // Use the asset's name as a unique ID
+                    learnedSkillNames.Add(skill.name);
                 }
             }
             skillsLearnedPerCategory = new Dictionary<SkillAcquisitionCategory, int>(skillManager._skillsLearnedPerCategory);
@@ -49,7 +43,6 @@ public class PlayerSkillManager : SkillManagerBase
     public void SaveState()
     {
         SaveSystem.SavePlayerSkills(this);
-        Debug.Log("Player skills saved.");
     }
 
     public void LoadState(SkillDatabase skillDatabase)
@@ -61,51 +54,40 @@ public class PlayerSkillManager : SkillManagerBase
             return;
         }
 
-        // Clear any existing skills before loading.
         learnedSkills.Clear();
-
-        // Load the progression caps.
         _skillsLearnedPerCategory = new Dictionary<SkillAcquisitionCategory, int>(data.skillsLearnedPerCategory);
 
-        // Re-learn all skills from the save file using their names.
         foreach (string skillName in data.learnedSkillNames)
         {
             Skill skillToLearn = skillDatabase.GetSkillByName(skillName);
             if (skillToLearn != null)
             {
-                // We pass 'fromSaveFile: true' to bypass the cap check during loading.
-                LearnNewSkill(skillToLearn, SkillAcquisitionCategory.Taught, fromSaveFile: true);
+                // Learn the skill, bypassing the 40% cap check since we're loading from a save.
+                LearnNewSkill(skillToLearn, fromSaveFile: true);
             }
         }
-        Debug.Log("Player skills loaded.");
     }
-
     #endregion
 
     protected override void Awake()
     {
         base.Awake();
         InitializeSkillCaps();
-        // NOTE: The actual loading should be called by a central game manager after the skill database is ready.
-        // For now, we initialize a new character.
-        // LoadState(FindObjectOfType<SkillDatabase>()); 
-        InitializeNewCharacter();
+        // The SaveLoadManager is responsible for calling LoadState, 
+        // which in turn will call InitializeNewCharacter if no save is found.
     }
 
     private void InitializeNewCharacter()
     {
-        Debug.Log("Initializing new character skills.");
         foreach (Skill skill in _startingSkills)
         {
-            // By default, starting skills are considered "Taught"
             LearnNewSkill(skill, SkillAcquisitionCategory.Taught);
         }
     }
 
     private void InitializeSkillCaps()
     {
-        // This is where you would define the total number of skills available per category on this floor.
-        // For now, we'll use the hardcoded numbers from our design document for Floor 1.
+        // These values represent the total number of skills available in each category on Floor 1.
         _skillCapsPerCategory[SkillAcquisitionCategory.Taught] = 5;
         _skillCapsPerCategory[SkillAcquisitionCategory.MonsterDrop] = 14;
         _skillCapsPerCategory[SkillAcquisitionCategory.Discovery] = 14;
@@ -114,19 +96,18 @@ public class PlayerSkillManager : SkillManagerBase
 
     protected override void Update()
     {
-        // We check if the activation has ended before calling the base Update.
-        // This ensures the event fires on the exact frame the lock ends.
+        // The base update handles cooldowns and the activation lock.
+        base.Update();
+
+        // When the activation lock ends, fire the event for the movement system.
         if (_isActivating && _currentActivationTime <= 0)
         {
             OnSkillActivationEnd?.Invoke();
         }
-
-        base.Update(); // This runs the cooldown and activation logic from the base class.
-        HandleSkillInput();
     }
 
     /// <summary>
-    /// This is the public-facing method for learning a new skill. It checks the 40% cap.
+    /// The public-facing method for learning a new skill. It checks the 40% cap.
     /// </summary>
     /// <returns>True if the skill was learned, false if the cap was reached.</returns>
     public bool TryLearnNewSkill(Skill skillToLearn, SkillAcquisitionCategory category)
@@ -134,33 +115,21 @@ public class PlayerSkillManager : SkillManagerBase
         return LearnNewSkill(skillToLearn, category, fromSaveFile: false);
     }
 
-    // The internal learning method, now with a flag to bypass checks when loading.
-    private bool LearnNewSkill(Skill skillToLearn, SkillAcquisitionCategory category, bool fromSaveFile = false)
+    // The internal learning method, with a flag to bypass checks when loading from a save file.
+    private bool LearnNewSkill(Skill skillToLearn, SkillAcquisitionCategory category = SkillAcquisitionCategory.Taught, bool fromSaveFile = false)
     {
         if (!fromSaveFile)
         {
-            // Check if we have already learned this skill.
-            if (learnedSkills.Values.Any(list => list.Contains(skillToLearn)))
-            {
-                Debug.Log($"{skillToLearn.skillName} is already known.");
-                return false;
-            }
+            if (learnedSkills.Values.Any(list => list.Contains(skillToLearn))) return false;
+            if (!_skillsLearnedPerCategory.ContainsKey(category)) _skillsLearnedPerCategory[category] = 0;
 
-            // Initialize the counter for this category if it doesn't exist.
-            if (!_skillsLearnedPerCategory.ContainsKey(category))
-            {
-                _skillsLearnedPerCategory[category] = 0;
-            }
-
-            // Check against the 40% cap.
             int cap = Mathf.CeilToInt(_skillCapsPerCategory[category] * 0.4f);
             if (_skillsLearnedPerCategory[category] >= cap)
             {
-                Debug.Log($"Skill learning cap for {category} reached. Awarding currency instead.");
-                // TODO: Add logic here to give the player gold.
+                Debug.Log($"Skill cap for {category} reached. Awarding currency instead.");
+                // TODO: Add currency reward logic here via the InventoryManager.
                 return false;
             }
-
             _skillsLearnedPerCategory[category]++;
         }
 
@@ -169,48 +138,30 @@ public class PlayerSkillManager : SkillManagerBase
         return true;
     }
 
-    // We override the base method to add the event invocation.
+    // --- THIS IS THE FIX ---
+    // The access modifier is changed from 'public' to 'protected' to match the base class.
     protected override void TryToUseSkill(Skill skill)
     {
-        // First, check if all conditions in the base class are met.
         if (CanUseSkill(skill))
         {
-            // Fire the event to stop movement.
             OnSkillActivationStart?.Invoke();
-
-            // Now, actually use the skill by calling the base activation logic.
             ActivateSkill(skill);
         }
     }
 
-    private void HandleSkillInput()
+    /// <summary>
+    /// A public method for the PlayerInputManager to call when a skill key is pressed.
+    /// </summary>
+    public void AttemptToUseSkill(Archetype archetype, int index)
     {
-        foreach (SkillBinding binding in skillBindings)
+        if (learnedSkills.ContainsKey(archetype) && index >= 0 && index < learnedSkills[archetype].Count)
         {
-            if (Input.GetKeyDown(binding.key))
-            {
-                AttemptToUseSkillFromBinding(binding);
-            }
-        }
-    }
-
-    private void AttemptToUseSkillFromBinding(SkillBinding binding)
-    {
-        if (learnedSkills.ContainsKey(binding.archetype) &&
-            binding.skillIndex >= 0 &&
-            binding.skillIndex < learnedSkills[binding.archetype].Count)
-        {
-            Skill skillToUse = learnedSkills[binding.archetype][binding.skillIndex];
+            Skill skillToUse = learnedSkills[archetype][index];
             TryToUseSkill(skillToUse);
         }
-    }
-
-    // Helper class for the Inspector.
-    [System.Serializable]
-    private class SkillBinding
-    {
-        public KeyCode key;
-        public Archetype archetype;
-        public int skillIndex;
+        else
+        {
+            Debug.LogWarning($"Attempted to use an invalid skill binding: Archetype {archetype}, Index {index}.");
+        }
     }
 }

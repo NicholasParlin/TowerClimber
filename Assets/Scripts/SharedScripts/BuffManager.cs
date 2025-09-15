@@ -1,40 +1,55 @@
-using UnityEngine;
 using System.Collections.Generic;
+using UnityEngine;
 using System.Linq;
 
-// This component manages all temporary stat modifiers (buffs and debuffs) on a character.
+// This component manages all temporary stat modifiers (buffs and debuffs) for a character.
+// It can be attached to both the player and enemies.
+[RequireComponent(typeof(CharacterStatsBase))]
 public class BuffManager : MonoBehaviour
 {
-    // A private class to keep track of active modifiers and their timers.
+    // A private class to track active modifiers and their remaining time.
     private class ActiveModifier
     {
         public Stat TargetStat;
         public StatModifier Modifier;
-        public float RemainingTime;
+        public float TimeRemaining;
+
+        public ActiveModifier(Stat stat, StatModifier modifier)
+        {
+            TargetStat = stat;
+            Modifier = modifier;
+            TimeRemaining = modifier.Duration;
+        }
     }
 
     private List<ActiveModifier> _activeModifiers = new List<ActiveModifier>();
     private CharacterStatsBase _stats;
-    private PlayerStats _playerStats; // A specific reference to PlayerStats for event handling
+    private PlayerStats _playerStats; // This will be null if the component is on an enemy.
 
     private void Awake()
     {
+        // Get a reference to the base stats component.
         _stats = GetComponent<CharacterStatsBase>();
-        // Try to get the PlayerStats component. If this is an enemy, it will be null, which is intended.
-        _playerStats = _stats as PlayerStats;
+        // Also try to get a reference to the player-specific stats component.
+        _playerStats = GetComponent<PlayerStats>();
     }
 
     private void Update()
     {
-        // Loop backwards to safely remove items from the list while iterating.
+        // We iterate backwards to safely remove items from the list while iterating.
         for (int i = _activeModifiers.Count - 1; i >= 0; i--)
         {
             ActiveModifier activeMod = _activeModifiers[i];
-            activeMod.RemainingTime -= Time.deltaTime;
 
-            if (activeMod.RemainingTime <= 0)
+            // A negative duration indicates a permanent modifier (e.g., from a title or gear), so we ignore it.
+            if (activeMod.TimeRemaining < 0) continue;
+
+            // Tick down the timer for temporary buffs/debuffs.
+            activeMod.TimeRemaining -= Time.deltaTime;
+
+            if (activeMod.TimeRemaining <= 0)
             {
-                // Timer has expired, so remove the modifier.
+                // Timer has expired, so remove the modifier from the stat and our tracking list.
                 RemoveModifier(activeMod.TargetStat, activeMod.Modifier);
                 _activeModifiers.RemoveAt(i);
             }
@@ -42,50 +57,64 @@ public class BuffManager : MonoBehaviour
     }
 
     /// <summary>
-    /// Adds a new stat modifier to a character. Handles stacking by refreshing duration.
+    /// Adds a new stat modifier to a character, handling stacking logic.
     /// </summary>
     public void AddModifier(Stat stat, StatModifier modifier)
     {
-        // --- Stacking Logic ---
-        // Check if a modifier from the same source already exists.
-        var existingModifier = _activeModifiers.FirstOrDefault(m => m.Modifier.Source == modifier.Source);
-        if (existingModifier != null)
+        // Stacking logic: If a modifier from the same source already exists on the same stat,
+        // remove the old one first. This effectively refreshes the duration.
+        var existingMod = _activeModifiers.FirstOrDefault(m => m.Modifier.Source == modifier.Source && m.TargetStat == stat);
+        if (existingMod != null)
         {
-            // If it exists, remove the old one before adding the new one to refresh the timer.
-            _activeModifiers.Remove(existingModifier);
-            existingModifier.TargetStat.RemoveModifier(existingModifier.Modifier);
+            RemoveModifier(existingMod.TargetStat, existingMod.Modifier);
+            _activeModifiers.Remove(existingMod);
         }
 
-        // Add the modifier to the stat's internal list.
+        // Add the new modifier to the stat's internal list and to our tracking list.
         stat.AddModifier(modifier);
+        _activeModifiers.Add(new ActiveModifier(stat, modifier));
 
-        // If the modifier has a duration, add it to our active list to be tracked.
-        if (modifier.Duration > 0)
-        {
-            _activeModifiers.Add(new ActiveModifier { TargetStat = stat, Modifier = modifier, RemainingTime = modifier.Duration });
-        }
-
-        // --- Event Firing Logic ---
-        // Check if this is the player and if the modified stat was Sense.
-        if (_playerStats != null && stat == _playerStats.Sense)
-        {
-            // Call the public method on PlayerStats to safely fire the event.
-            _playerStats.NotifyCoreStatChanged();
-        }
+        // Check if this change needs to be reported to the GameManager.
+        CheckForSenseChangeEvent(stat);
     }
 
     /// <summary>
-    /// Manually removes a stat modifier from a character (e.g., when a toggleable passive is turned off).
+    /// Removes a specific stat modifier from a character.
     /// </summary>
     public void RemoveModifier(Stat stat, StatModifier modifier)
     {
         stat.RemoveModifier(modifier);
 
-        // --- Event Firing Logic ---
-        // Check if this is the player and if the modified stat was Sense.
+        // Check if this change needs to be reported to the GameManager.
+        CheckForSenseChangeEvent(stat);
+    }
+
+    /// <summary>
+    /// Removes all modifiers that came from a specific source (e.g., an unequipped Title).
+    /// </summary>
+    public void RemoveAllModifiersFromSource(object source)
+    {
+        // Find all active modifiers in our list that match the source.
+        var modsToRemove = _activeModifiers.Where(m => m.Modifier.Source == source).ToList();
+
+        foreach (var activeMod in modsToRemove)
+        {
+            // Remove the modifier from the stat and from our tracking list.
+            RemoveModifier(activeMod.TargetStat, activeMod.Modifier);
+            _activeModifiers.Remove(activeMod);
+        }
+    }
+
+    /// <summary>
+    /// A helper method to safely notify the GameManager of a change to the player's Sense stat.
+    /// </summary>
+    private void CheckForSenseChangeEvent(Stat stat)
+    {
+        // Only proceed if this component is on the player (_playerStats is not null)
+        // and if the stat that changed was the Sense stat.
         if (_playerStats != null && stat == _playerStats.Sense)
         {
-            // Call the public method to ensure the GameManager is updated.
+            // Call the public notifier method on the PlayerStats script.
             _playerStats.NotifyCoreStatChanged();
         }
     }

@@ -1,96 +1,113 @@
 using UnityEngine;
 
-// Enum to define the different types of stats for easy reference.
-public enum StatType { Strength, Dexterity, Vitality, Intelligence, Wisdom, Endurance, Sense }
-
-// This is the base component for all characters, containing shared stats and resources.
+// This is the universal base class for all characters, both player and enemies.
+// It holds all the core stats and resources.
 public class CharacterStatsBase : MonoBehaviour
 {
     [Header("Primary Stats")]
-    public Stat Strength = new Stat(5);
-    public Stat Dexterity = new Stat(5);
-    public Stat Vitality = new Stat(5);
-    public Stat Intelligence = new Stat(5);
-    public Stat Wisdom = new Stat(5);
-    public Stat Endurance = new Stat(5);
-    public Stat Sense = new Stat(5);
+    public Stat Strength;
+    public Stat Dexterity;
+    public Stat Vitality;
+    public Stat Intelligence;
+    public Stat Wisdom;
+    public Stat Endurance;
+    public Stat Sense;
 
-    [Header("Secondary Stats")]
-    // Base value of 1 represents 100% speed. Buffs/debuffs will modify this.
-    public Stat MovementSpeed = new Stat(1);
-    public Stat AttackSpeed = new Stat(1);
+    [Header("Combat Stats")]
+    public Stat AttackSpeed;
+    public Stat MovementSpeed;
 
-    [Header("Resources")]
+    [Header("Primary Resources")]
     public float maxHealth = 100;
     public float currentHealth { get; protected set; }
-
-    public float maxMana = 100;
+    public float maxMana = 50;
     public float currentMana { get; protected set; }
-
-    public float maxEnergy = 100;
+    public float maxEnergy = 50;
     public float currentEnergy { get; protected set; }
 
-    // Special resource for the Pain-Eater
+    [Header("Special Resources")]
     public float maxAnguish = 100;
-    public float currentAnguish { get; protected set; }
+    public float currentAnguish { get; private set; }
 
     protected virtual void Awake()
     {
-        // Initialize all resources to their maximum values at the start.
+        // Initialize stats. For now, we assume they will be configured in the Inspector.
+        // On game start, ensure resources are calculated based on stats.
+        CalculateMaxResources();
+        RestoreAllResources();
+    }
+
+    /// <summary>
+    /// Restores all primary resources to their maximum values.
+    /// </summary>
+    public void RestoreAllResources()
+    {
         currentHealth = maxHealth;
         currentMana = maxMana;
         currentEnergy = maxEnergy;
-        currentAnguish = 0; // Anguish starts at zero
     }
 
-    // --- Public methods for managing resources ---
+    /// <summary>
+    /// Recalculates the maximum value of resources based on the character's stats.
+    /// </summary>
+    public void CalculateMaxResources()
+    {
+        maxHealth = 25 + (Vitality.Value * 5);
+        maxMana = 25 + (Wisdom.Value * 5);
+        maxEnergy = 25 + (Endurance.Value * 5);
+    }
 
+    // --- Resource Management ---
+
+    /// <summary>
+    /// Reduces the character's current health by a specified amount.
+    /// </summary>
     public virtual void TakeDamage(float damage)
     {
-        // Add defense calculation here later if needed
         currentHealth -= damage;
-        currentHealth = Mathf.Clamp(currentHealth, 0, maxHealth);
-        Debug.Log(transform.name + " takes " + damage + " damage.");
+        if (currentHealth < 0) currentHealth = 0;
 
-        if (currentHealth <= 0)
-        {
-            Die();
-        }
+        // In a full implementation, you would check for death here.
+        // if (currentHealth <= 0) { Die(); }
     }
 
+    /// <summary>
+    /// Reduces the character's current mana.
+    /// </summary>
     public void SpendMana(float amount)
     {
+        if (amount <= 0) return;
         currentMana -= amount;
-        currentMana = Mathf.Clamp(currentMana, 0, maxMana);
+        if (currentMana < 0) currentMana = 0;
     }
 
+    /// <summary>
+    /// Reduces the character's current energy.
+    /// </summary>
     public void SpendEnergy(float amount)
     {
+        if (amount <= 0) return;
         currentEnergy -= amount;
-        currentEnergy = Mathf.Clamp(currentEnergy, 0, maxEnergy);
+        if (currentEnergy < 0) currentEnergy = 0;
     }
 
-    public void SpendHealth(float amount)
-    {
-        currentHealth -= amount;
-        currentHealth = Mathf.Clamp(currentHealth, 0, maxHealth);
-    }
-
-    public void SpendAnguish(float amount)
-    {
-        currentAnguish -= amount;
-        currentAnguish = Mathf.Clamp(currentAnguish, 0, maxAnguish);
-    }
-
+    /// <summary>
+    /// Increases the character's current Anguish.
+    /// </summary>
     public void GainAnguish(float amount)
     {
+        if (amount <= 0) return;
         currentAnguish += amount;
-        currentAnguish = Mathf.Clamp(currentAnguish, 0, maxAnguish);
+        if (currentAnguish > maxAnguish) currentAnguish = maxAnguish;
     }
 
-    protected virtual void Die()
+    /// <summary>
+    /// Reduces the character's current Anguish.
+    /// </summary>
+    public void SpendAnguish(float amount)
     {
-        Debug.Log(transform.name + " has died.");
-        // Add death logic here (e.g., play animation, destroy object, etc.)
+        if (amount <= 0) return;
+        currentAnguish -= amount;
+        if (currentAnguish < 0) currentAnguish = 0;
     }
 }
