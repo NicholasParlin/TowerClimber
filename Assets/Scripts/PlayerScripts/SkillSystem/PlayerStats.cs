@@ -2,7 +2,6 @@ using System;
 using UnityEngine;
 
 // This component is specific to the player and handles their stats, resources, and progression.
-// It inherits from CharacterStatsBase to get all the core stat and resource fields.
 [RequireComponent(typeof(InventoryManager))]
 public class PlayerStats : CharacterStatsBase
 {
@@ -72,18 +71,11 @@ public class PlayerStats : CharacterStatsBase
             Debug.Log("Player stats loaded.");
             OnStatsUpdated?.Invoke();
         }
-        else
-        {
-            // This would be the case for a new game.
-            CalculateMaxResources();
-            RestoreAllResources();
-        }
     }
     #endregion
 
     /// <summary>
     /// Adds experience to the player and checks for level up.
-    /// Can handle multiple level ups from a single XP gain.
     /// </summary>
     public void AddExperience(int amount)
     {
@@ -100,13 +92,11 @@ public class PlayerStats : CharacterStatsBase
     {
         currentLevel++;
         currentExperience -= experienceToNextLevel;
-        // A simple formula for next level's XP requirement.
         experienceToNextLevel = Mathf.RoundToInt(experienceToNextLevel * 1.5f);
         unspentStatPoints += 5;
 
         // Fully restore the player on level up.
         RestoreAllResources();
-
         Debug.Log($"LEVEL UP! Reached level {currentLevel}. You have {unspentStatPoints} stat points.");
     }
 
@@ -124,27 +114,26 @@ public class PlayerStats : CharacterStatsBase
             case StatType.Strength: Strength.BaseValue++; break;
             case StatType.Dexterity: Dexterity.BaseValue++; break;
             case StatType.Vitality:
-                Vitality.BaseValue++;
                 float oldMaxHealth = maxHealth;
+                Vitality.BaseValue++;
                 CalculateMaxResources();
-                currentHealth += (maxHealth - oldMaxHealth); // Grant the increase to current health
+                currentHealth += (maxHealth - oldMaxHealth);
                 break;
             case StatType.Intelligence: Intelligence.BaseValue++; break;
             case StatType.Wisdom:
-                Wisdom.BaseValue++;
                 float oldMaxMana = maxMana;
+                Wisdom.BaseValue++;
                 CalculateMaxResources();
-                currentMana += (maxMana - oldMaxMana); // Grant the increase to current mana
+                currentMana += (maxMana - oldMaxMana);
                 break;
             case StatType.Endurance:
-                Endurance.BaseValue++;
                 float oldMaxEnergy = maxEnergy;
+                Endurance.BaseValue++;
                 CalculateMaxResources();
-                currentEnergy += (maxEnergy - oldMaxEnergy); // Grant the increase to current energy
+                currentEnergy += (maxEnergy - oldMaxEnergy);
                 break;
             case StatType.Sense:
                 Sense.BaseValue++;
-                // Fire the event to notify the GameManager that the speed calculation needs to be updated.
                 NotifyCoreStatChanged();
                 break;
         }
@@ -161,7 +150,6 @@ public class PlayerStats : CharacterStatsBase
 
     /// <summary>
     /// Gets a specific stat object based on the StatType enum.
-    /// Useful for systems like the TitleManager that need to apply buffs to specific stats.
     /// </summary>
     public Stat GetStat(StatType type)
     {

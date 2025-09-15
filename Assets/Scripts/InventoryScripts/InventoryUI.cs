@@ -14,8 +14,6 @@ public class InventoryUI : MonoBehaviour
     [Tooltip("The UI prefab for a single inventory slot.")]
     [SerializeField] private GameObject inventorySlotPrefab;
 
-    // A list to keep track of the instantiated slot UI objects.
-    private List<InventorySlotUI> _slotUIs = new List<InventorySlotUI>();
     private InventoryManager _inventoryManager;
 
     void Start()
@@ -23,37 +21,53 @@ public class InventoryUI : MonoBehaviour
         // Get the singleton instance of the InventoryManager.
         _inventoryManager = InventoryManager.Instance;
 
-        // Subscribe to an event that tells us when the inventory has changed.
-        // We will need to add this event to the InventoryManager.
-        // For now, we will just call UpdateUI() manually.
+        // Subscribe to the inventory changed event. This is the core of the efficient UI.
+        // The UpdateUI method will now only be called when the inventory actually changes.
+        if (_inventoryManager != null)
+        {
+            _inventoryManager.OnInventoryChanged += UpdateUI;
+        }
 
-        inventoryPanel.SetActive(false); // Start with the inventory closed.
+        // Start with the inventory panel closed.
+        inventoryPanel.SetActive(false);
     }
 
-    void Update()
+    private void OnDestroy()
     {
-        // Simple toggle logic for opening/closing the inventory.
-        if (Input.GetKeyDown(KeyCode.I))
+        // Always unsubscribe from events when this object is destroyed to prevent errors.
+        if (_inventoryManager != null)
         {
-            inventoryPanel.SetActive(!inventoryPanel.activeSelf);
-            if (inventoryPanel.activeSelf)
-            {
-                UpdateUI();
-            }
+            _inventoryManager.OnInventoryChanged -= UpdateUI;
+        }
+    }
+
+    /// <summary>
+    /// Toggles the visibility of the inventory panel. This method will be called
+    /// by the PlayerInputManager.
+    /// </summary>
+    public void Toggle()
+    {
+        inventoryPanel.SetActive(!inventoryPanel.activeSelf);
+
+        // When we open the panel, we should always refresh the UI to ensure it's up to date.
+        if (inventoryPanel.activeSelf)
+        {
+            UpdateUI();
         }
     }
 
     /// <summary>
     /// Redraws the entire inventory UI based on the current state of the InventoryManager.
     /// </summary>
-    public void UpdateUI()
+    private void UpdateUI()
     {
-        // First, clear all the existing slot UIs to prevent duplicates.
+        if (_inventoryManager == null || !inventoryPanel.activeSelf) return;
+
+        // Clear all the existing slot UIs to prevent duplicates.
         foreach (Transform child in itemsParent)
         {
             Destroy(child.gameObject);
         }
-        _slotUIs.Clear();
 
         // For each slot in the player's inventory, create a new UI element.
         foreach (InventorySlot slot in _inventoryManager.inventory)
@@ -62,8 +76,8 @@ public class InventoryUI : MonoBehaviour
             InventorySlotUI slotUI = slotGO.GetComponent<InventorySlotUI>();
             if (slotUI != null)
             {
+                // Tell the individual slot UI to display the item's data.
                 slotUI.DisplayItem(slot);
-                _slotUIs.Add(slotUI);
             }
         }
     }

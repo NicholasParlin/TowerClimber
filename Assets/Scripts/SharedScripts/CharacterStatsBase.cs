@@ -14,11 +14,14 @@ public class CharacterStatsBase : MonoBehaviour
     public Stat Sense;
 
     [Header("Combat Stats")]
+    public Stat Armor;
+    public Stat MagicResistance;
     public Stat AttackSpeed;
     public Stat MovementSpeed;
 
     [Header("Primary Resources")]
     public float maxHealth = 100;
+    // The 'set' accessor is 'protected' to allow child classes like PlayerStats to modify it.
     public float currentHealth { get; protected set; }
     public float maxMana = 50;
     public float currentMana { get; protected set; }
@@ -27,18 +30,16 @@ public class CharacterStatsBase : MonoBehaviour
 
     [Header("Special Resources")]
     public float maxAnguish = 100;
-    public float currentAnguish { get; private set; }
+    public float currentAnguish { get; protected set; }
 
     protected virtual void Awake()
     {
-        // Initialize stats. For now, we assume they will be configured in the Inspector.
-        // On game start, ensure resources are calculated based on stats.
-        CalculateMaxResources();
+        // Set resources to full on awake. The Save/Load system will override this if a save exists.
         RestoreAllResources();
     }
 
     /// <summary>
-    /// Restores all primary resources to their maximum values.
+    /// Sets all current resources to their maximum values.
     /// </summary>
     public void RestoreAllResources()
     {
@@ -48,65 +49,58 @@ public class CharacterStatsBase : MonoBehaviour
     }
 
     /// <summary>
-    /// Recalculates the maximum value of resources based on the character's stats.
+    /// Recalculates the maximum value of primary resources based on core stats.
     /// </summary>
     public void CalculateMaxResources()
     {
-        maxHealth = 25 + (Vitality.Value * 5);
-        maxMana = 25 + (Wisdom.Value * 5);
-        maxEnergy = 25 + (Endurance.Value * 5);
+        maxHealth = 25 + (Vitality.Value * 5);   // Example formula
+        maxMana = 25 + (Wisdom.Value * 5);     // Example formula
+        maxEnergy = 25 + (Endurance.Value * 5); // Example formula
     }
 
     // --- Resource Management ---
 
     /// <summary>
-    /// Reduces the character's current health by a specified amount.
+    /// Reduces current health by a specified amount.
     /// </summary>
     public virtual void TakeDamage(float damage)
     {
         currentHealth -= damage;
         if (currentHealth < 0) currentHealth = 0;
-
-        // In a full implementation, you would check for death here.
-        // if (currentHealth <= 0) { Die(); }
     }
 
     /// <summary>
-    /// Reduces the character's current mana.
+    /// Reduces current mana by a specified amount.
     /// </summary>
     public void SpendMana(float amount)
     {
-        if (amount <= 0) return;
         currentMana -= amount;
         if (currentMana < 0) currentMana = 0;
     }
 
     /// <summary>
-    /// Reduces the character's current energy.
+    /// Reduces current energy by a specified amount.
     /// </summary>
     public void SpendEnergy(float amount)
     {
-        if (amount <= 0) return;
         currentEnergy -= amount;
         if (currentEnergy < 0) currentEnergy = 0;
     }
 
     /// <summary>
-    /// Increases the character's current Anguish.
+    /// Increases current anguish by a specified amount, capped at the maximum.
     /// </summary>
     public void GainAnguish(float amount)
     {
-        if (amount <= 0) return;
         currentAnguish += amount;
         if (currentAnguish > maxAnguish) currentAnguish = maxAnguish;
     }
 
     /// <summary>
-    /// Reduces the character's current Anguish.
+    /// Reduces current anguish by a specified amount.
     /// </summary>
     public void SpendAnguish(float amount)
     {
-        if (amount <= 0) return;
         currentAnguish -= amount;
         if (currentAnguish < 0) currentAnguish = 0;
     }

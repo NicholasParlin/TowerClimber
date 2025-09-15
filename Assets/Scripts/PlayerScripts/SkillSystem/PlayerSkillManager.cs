@@ -3,21 +3,28 @@ using System.Collections.Generic;
 using UnityEngine;
 using System.Linq;
 
-// This component is specific to the player and handles their skill learning progression,
-// save/load functionality, and the logic for using skills. It is controlled by the PlayerInputManager.
+// This component is specific to the player and handles their skill learning, progression,
+// and usage. It now also manages the toggling of passive skills.
+[RequireComponent(typeof(InventoryManager), typeof(BuffManager), typeof(PlayerStats))]
 public class PlayerSkillManager : SkillManagerBase
 {
     [Header("Player-Specific Settings")]
-    [Tooltip("The skills the player knows at the very start of a new game.")]
     [SerializeField] private List<Skill> _startingSkills = new List<Skill>();
+    [SerializeField] private int currencyRewardForDuplicateSkill = 100;
 
-    // Events for the movement system to listen to.
     public event Action OnSkillActivationStart;
     public event Action OnSkillActivationEnd;
 
-    // Tracking for the 40% skill learning cap.
+    private List<Skill> _activePassives = new List<Skill>();
+
+    // Dictionaries for the 40% skill learning cap.
     private Dictionary<SkillAcquisitionCategory, int> _skillsLearnedPerCategory = new Dictionary<SkillAcquisitionCategory, int>();
     private Dictionary<SkillAcquisitionCategory, int> _skillCapsPerCategory = new Dictionary<SkillAcquisitionCategory, int>();
+
+    // Component references.
+    private InventoryManager _inventoryManager;
+    private BuffManager _buffManager;
+    private PlayerStats _playerStats;
 
     #region Save System Integration
     [System.Serializable]
@@ -25,34 +32,26 @@ public class PlayerSkillManager : SkillManagerBase
     {
         public List<string> learnedSkillNames;
         public Dictionary<SkillAcquisitionCategory, int> skillsLearnedPerCategory;
+        public List<string> activePassiveSkillNames;
 
         public SaveData(PlayerSkillManager skillManager)
         {
             learnedSkillNames = new List<string>();
             foreach (var skillList in skillManager.learnedSkills.Values)
             {
-                foreach (var skill in skillList)
-                {
-                    learnedSkillNames.Add(skill.name);
-                }
+                foreach (var skill in skillList) { learnedSkillNames.Add(skill.name); }
             }
             skillsLearnedPerCategory = new Dictionary<SkillAcquisitionCategory, int>(skillManager._skillsLearnedPerCategory);
+            activePassiveSkillNames = skillManager._activePassives.Select(s => s.name).ToList();
         }
     }
 
-    public void SaveState()
-    {
-        SaveSystem.SavePlayerSkills(this);
-    }
+    public void SaveState() { SaveSystem.SavePlayerSkills(this); }
 
     public void LoadState(SkillDatabase skillDatabase)
     {
         SaveData data = SaveSystem.LoadPlayerSkills();
-        if (data == null || skillDatabase == null)
-        {
-            InitializeNewCharacter();
-            return;
-        }
+        if (data == null || skillDatabase == null) { InitializeNewCharacter(); return; }
 
         learnedSkills.Clear();
         _skillsLearnedPerCategory = new Dictionary<SkillAcquisitionCategory, int>(data.skillsLearnedPerCategory);
@@ -60,10 +59,17 @@ public class PlayerSkillManager : SkillManagerBase
         foreach (string skillName in data.learnedSkillNames)
         {
             Skill skillToLearn = skillDatabase.GetSkillByName(skillName);
-            if (skillToLearn != null)
+            if (skillToLearn != null) { base.LearnNewSkill(skillToLearn); }
+        }
+
+        _activePassives.Clear();
+        foreach (string skillName in data.activePassiveSkillNames)
+        {
+            Skill passiveSkill = skillDatabase.GetSkillByName(skillName);
+            if (passiveSkill != null && passiveSkill.isPassive)
             {
-                // Learn the skill, bypassing the 40% cap check since we're loading from a save.
-                LearnNewSkill(skillToLearn, fromSaveFile: true);
+                _activePassives.Add(passiveSkill);
+                ApplyPassiveEffect(passiveSkill);
             }
         }
     }
@@ -72,22 +78,23 @@ public class PlayerSkillManager : SkillManagerBase
     protected override void Awake()
     {
         base.Awake();
+        _inventoryManager = GetComponent<InventoryManager>();
+        _buffManager = GetComponent<BuffManager>();
+        _playerStats = GetComponent<PlayerStats>();
         InitializeSkillCaps();
-        // The SaveLoadManager is responsible for calling LoadState, 
-        // which in turn will call InitializeNewCharacter if no save is found.
     }
 
     private void InitializeNewCharacter()
     {
+        Debug.Log("Initializing new character with starting skills.");
         foreach (Skill skill in _startingSkills)
         {
-            LearnNewSkill(skill, SkillAcquisitionCategory.Taught);
+            base.LearnNewSkill(skill);
         }
     }
 
     private void InitializeSkillCaps()
     {
-        // These values represent the total number of skills available in each category on Floor 1.
         _skillCapsPerCategory[SkillAcquisitionCategory.Taught] = 5;
         _skillCapsPerCategory[SkillAcquisitionCategory.MonsterDrop] = 14;
         _skillCapsPerCategory[SkillAcquisitionCategory.Discovery] = 14;
@@ -96,50 +103,39 @@ public class PlayerSkillManager : SkillManagerBase
 
     protected override void Update()
     {
-        // The base update handles cooldowns and the activation lock.
         base.Update();
-
-        // When the activation lock ends, fire the event for the movement system.
-        if (_isActivating && _currentActivationTime <= 0)
-        {
-            OnSkillActivationEnd?.Invoke();
-        }
+        if (_isActivating && _currentActivationTime <= 0) { OnSkillActivationEnd?.Invoke(); }
     }
 
-    /// <summary>
-    /// The public-facing method for learning a new skill. It checks the 40% cap.
-    /// </summary>
-    /// <returns>True if the skill was learned, false if the cap was reached.</returns>
     public bool TryLearnNewSkill(Skill skillToLearn, SkillAcquisitionCategory category)
     {
-        return LearnNewSkill(skillToLearn, category, fromSaveFile: false);
-    }
-
-    // The internal learning method, with a flag to bypass checks when loading from a save file.
-    private bool LearnNewSkill(Skill skillToLearn, SkillAcquisitionCategory category = SkillAcquisitionCategory.Taught, bool fromSaveFile = false)
-    {
-        if (!fromSaveFile)
+        if (learnedSkills.Values.Any(list => list.Contains(skillToLearn)))
         {
-            if (learnedSkills.Values.Any(list => list.Contains(skillToLearn))) return false;
-            if (!_skillsLearnedPerCategory.ContainsKey(category)) _skillsLearnedPerCategory[category] = 0;
-
-            int cap = Mathf.CeilToInt(_skillCapsPerCategory[category] * 0.4f);
-            if (_skillsLearnedPerCategory[category] >= cap)
-            {
-                Debug.Log($"Skill cap for {category} reached. Awarding currency instead.");
-                // TODO: Add currency reward logic here via the InventoryManager.
-                return false;
-            }
-            _skillsLearnedPerCategory[category]++;
+            Debug.Log($"{skillToLearn.skillName} is already known.");
+            return false;
         }
 
-        // Call the base method to add the skill to our dictionaries.
+        if (!_skillsLearnedPerCategory.ContainsKey(category))
+        {
+            _skillsLearnedPerCategory[category] = 0;
+        }
+
+        int cap = Mathf.CeilToInt(_skillCapsPerCategory[category] * 0.4f);
+        if (_skillsLearnedPerCategory[category] >= cap)
+        {
+            if (_inventoryManager != null)
+            {
+                _inventoryManager.AddGold(currencyRewardForDuplicateSkill);
+            }
+            Debug.Log($"Skill cap for {category} reached. Awarded {currencyRewardForDuplicateSkill} gold instead.");
+            return false;
+        }
+
+        _skillsLearnedPerCategory[category]++;
         base.LearnNewSkill(skillToLearn);
         return true;
     }
 
-    // --- THIS IS THE FIX ---
-    // The access modifier is changed from 'public' to 'protected' to match the base class.
     protected override void TryToUseSkill(Skill skill)
     {
         if (CanUseSkill(skill))
@@ -149,19 +145,58 @@ public class PlayerSkillManager : SkillManagerBase
         }
     }
 
-    /// <summary>
-    /// A public method for the PlayerInputManager to call when a skill key is pressed.
-    /// </summary>
     public void AttemptToUseSkill(Archetype archetype, int index)
     {
         if (learnedSkills.ContainsKey(archetype) && index >= 0 && index < learnedSkills[archetype].Count)
         {
             Skill skillToUse = learnedSkills[archetype][index];
-            TryToUseSkill(skillToUse);
+            if (!skillToUse.isPassive)
+            {
+                TryToUseSkill(skillToUse);
+            }
+        }
+    }
+
+    public void TogglePassive(Skill passiveSkill)
+    {
+        if (passiveSkill == null || !passiveSkill.isPassive) return;
+
+        if (_activePassives.Contains(passiveSkill))
+        {
+            _activePassives.Remove(passiveSkill);
+            RemovePassiveEffect(passiveSkill);
+            Debug.Log($"Deactivated passive: {passiveSkill.skillName}");
         }
         else
         {
-            Debug.LogWarning($"Attempted to use an invalid skill binding: Archetype {archetype}, Index {index}.");
+            _activePassives.Add(passiveSkill);
+            ApplyPassiveEffect(passiveSkill);
+            Debug.Log($"Activated passive: {passiveSkill.skillName}");
         }
+    }
+
+    public bool IsPassiveActive(Skill passiveSkill)
+    {
+        return _activePassives.Contains(passiveSkill);
+    }
+
+    private void ApplyPassiveEffect(Skill passiveSkill)
+    {
+        // This is where you would define the specific stat modifiers for each passive skill.
+        // Using the skill's name (which is unique as it's an asset filename) is a simple way to do this.
+        switch (passiveSkill.name)
+        {
+            case "IronWill": // Juggernaut
+                // Example: A 15% bonus to Armor.
+                var defenseMod = new StatModifier(0.15f, -1f, passiveSkill, ModifierType.Percentage);
+                _buffManager.AddModifier(_playerStats.Armor, defenseMod);
+                break;
+                // Add other passive skill cases here...
+        }
+    }
+
+    private void RemovePassiveEffect(Skill passiveSkill)
+    {
+        _buffManager.RemoveAllModifiersFromSource(passiveSkill);
     }
 }

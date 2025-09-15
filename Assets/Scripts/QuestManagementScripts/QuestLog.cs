@@ -3,17 +3,17 @@ using UnityEngine;
 using System.Linq;
 
 // This component is attached to the player and manages all their quests, including saving and loading progress.
-[RequireComponent(typeof(PlayerStats), typeof(PlayerSkillManager))]
+[RequireComponent(typeof(PlayerStats), typeof(PlayerSkillManager), typeof(InventoryManager))]
 public class QuestLog : MonoBehaviour
 {
     #region Save System Integration
-    // NOTE: A more complex save system would be needed to save the state of multi-stage quests
-    // and the current kill counts of active objectives. This is a simplified version.
     [System.Serializable]
     public class SaveData
     {
         public List<string> activeQuestIDs;
         public List<string> completedQuestIDs;
+        // NOTE: A more complex save system would also save objective progress (e.g., kill counts).
+        // This version resets active quest progress on load for simplicity.
 
         public SaveData(QuestLog questLog)
         {
@@ -22,18 +22,11 @@ public class QuestLog : MonoBehaviour
         }
     }
 
-    /// <summary>
-    /// Saves the current state of the quest log to a file.
-    /// </summary>
     public void SaveState()
     {
         SaveSystem.SavePlayerQuests(this);
-        Debug.Log("Player quests saved.");
     }
 
-    /// <summary>
-    /// Loads the state of the quest log from a file.
-    /// </summary>
     public void LoadState(QuestDatabase questDatabase)
     {
         SaveData data = SaveSystem.LoadPlayerQuests();
@@ -43,11 +36,10 @@ public class QuestLog : MonoBehaviour
             return;
         }
 
-        // Clear existing quests before loading.
         _activeQuests.Clear();
         _completedQuests.Clear();
 
-        // Load completed quests
+        // Load completed quests from the save data.
         foreach (string questID in data.completedQuestIDs)
         {
             Quest quest = questDatabase.GetQuestByName(questID);
@@ -58,7 +50,7 @@ public class QuestLog : MonoBehaviour
             }
         }
 
-        // Load active quests. Note: This simplified version resets their progress.
+        // Load active quests from the save data.
         foreach (string questID in data.activeQuestIDs)
         {
             Quest quest = questDatabase.GetQuestByName(questID);
@@ -93,95 +85,71 @@ public class QuestLog : MonoBehaviour
                 stages.Add(newStage);
             }
         }
-
-        public QuestStage GetCurrentStage()
-        {
-            if (currentStageIndex < stages.Count)
-            {
-                return stages[currentStageIndex];
-            }
-            return null;
-        }
-
-        public bool AreAllObjectivesInCurrentStageComplete()
-        {
-            QuestStage currentStage = GetCurrentStage();
-            if (currentStage == null) return false;
-            return currentStage.objectives.All(obj => obj.isComplete);
-        }
+        public QuestStage GetCurrentStage() => currentStageIndex < stages.Count ? stages[currentStageIndex] : null;
+        public bool AreAllObjectivesInCurrentStageComplete() => GetCurrentStage()?.objectives.All(obj => obj.isComplete) ?? false;
     }
 
     private List<QuestStatus> _activeQuests = new List<QuestStatus>();
     private List<Quest> _completedQuests = new List<Quest>();
 
+    // References to other core player components for giving rewards.
     private PlayerStats _playerStats;
     private PlayerSkillManager _playerSkillManager;
+    private InventoryManager _inventoryManager;
 
     private void Awake()
     {
         _playerStats = GetComponent<PlayerStats>();
         _playerSkillManager = GetComponent<PlayerSkillManager>();
+        _inventoryManager = GetComponent<InventoryManager>();
     }
 
     private void OnEnable()
     {
+        // Subscribe to the global game events.
         GameEvents.OnEnemyKilled += HandleEnemyKilled;
-        // You would add other event subscriptions here, e.g.:
-        // GameEvents.OnLocationReached += HandleLocationReached;
+        GameEvents.OnItemCollected += HandleItemCollected;
     }
 
     private void OnDisable()
     {
+        // Always unsubscribe to prevent errors.
         GameEvents.OnEnemyKilled -= HandleEnemyKilled;
-        // GameEvents.OnLocationReached -= HandleLocationReached;
+        GameEvents.OnItemCollected -= HandleItemCollected;
     }
 
     public void AddQuest(Quest newQuest)
     {
         if (_activeQuests.Any(q => q.quest == newQuest) || _completedQuests.Contains(newQuest)) return;
-
         QuestStatus status = new QuestStatus(newQuest);
         _activeQuests.Add(status);
         status.quest.currentState = QuestState.Active;
-
-        // Unlock the objectives for the very first stage.
         UnlockObjectivesForStage(status, 0);
-
-        Debug.Log($"Quest Added: {newQuest.questTitle}");
     }
 
     private void HandleEnemyKilled(string enemyID)
     {
-        // When an enemy dies, check all active quests.
         CheckAllQuestProgress(enemyID);
     }
 
-    // Example for another event type
-    // private void HandleLocationReached(string locationID)
-    // {
-    //     CheckAllQuestProgress(locationID);
-    // }
+    private void HandleItemCollected(string itemID)
+    {
+        CheckAllQuestProgress(itemID);
+    }
 
-    /// <summary>
-    /// The central method for checking all quest progress based on game events.
-    /// </summary>
     private void CheckAllQuestProgress(object progressData)
     {
-        // Iterate through a copy of the list to allow for modification if quests are completed.
         foreach (var questStatus in _activeQuests.ToList())
         {
             if (questStatus.quest.currentState != QuestState.Active) continue;
-
             QuestStage currentStage = questStatus.GetCurrentStage();
             if (currentStage == null) continue;
 
-            // Check progress on all unlocked objectives in the current stage.
             foreach (var objective in currentStage.objectives)
             {
                 if (objective.isUnlocked && !objective.isComplete)
                 {
                     objective.CheckProgress(progressData);
-                    // If this objective was just completed, grant its immediate rewards.
                     if (objective.isComplete)
                     {
                         GrantObjectiveRewards(objective);
@@ -189,21 +157,16 @@ public class QuestLog : MonoBehaviour
                 }
             }
 
-            // After checking all objectives, see if the entire stage is now complete.
             if (questStatus.AreAllObjectivesInCurrentStageComplete())
             {
-                questStatus.currentStageIndex++; // Advance to the next stage index.
-
-                // Check if there is a next stage to unlock.
+                questStatus.currentStageIndex++;
                 if (questStatus.currentStageIndex < questStatus.stages.Count)
                 {
                     UnlockObjectivesForStage(questStatus, questStatus.currentStageIndex);
-                    Debug.Log($"Stage '{currentStage.stageName}' complete for quest '{questStatus.quest.questTitle}'. New stage unlocked.");
                 }
-                else // This was the final stage.
+                else
                 {
                     questStatus.quest.currentState = QuestState.ReadyForTurnIn;
-                    Debug.Log($"All stages complete for '{questStatus.quest.questTitle}'. Quest is ready for turn-in.");
                 }
             }
         }
@@ -222,15 +185,8 @@ public class QuestLog : MonoBehaviour
 
     private void GrantObjectiveRewards(QuestObjective objective)
     {
-        if (objective.experienceReward > 0)
-        {
-            _playerStats.AddExperience(objective.experienceReward);
-        }
-        if (objective.goldReward > 0)
-        {
-            // InventoryManager.Instance.AddGold(objective.goldReward);
-            Debug.Log($"Player received {objective.goldReward} gold for completing an objective.");
-        }
+        if (objective.experienceReward > 0) { _playerStats.AddExperience(objective.experienceReward); }
+        if (objective.goldReward > 0) { _inventoryManager.AddGold(objective.goldReward); }
     }
 
     public void CompleteQuest(Quest questToComplete)
@@ -242,22 +198,12 @@ public class QuestLog : MonoBehaviour
             _completedQuests.Add(questToComplete);
             questToComplete.currentState = QuestState.Completed;
 
-            // --- FINAL REWARD PAYOUT LOGIC ---
-            if (questToComplete.finalExperienceReward > 0)
-            {
-                _playerStats.AddExperience(questToComplete.finalExperienceReward);
-            }
-            if (questToComplete.finalGoldReward > 0)
-            {
-                // InventoryManager.Instance.AddGold(questToComplete.finalGoldReward);
-                Debug.Log($"Player received {questToComplete.finalGoldReward} gold as final quest reward.");
-            }
+            if (questToComplete.finalExperienceReward > 0) { _playerStats.AddExperience(questToComplete.finalExperienceReward); }
+            if (questToComplete.finalGoldReward > 0) { _inventoryManager.AddGold(questToComplete.finalGoldReward); }
             if (questToComplete.finalSkillReward != null)
             {
                 _playerSkillManager.TryLearnNewSkill(questToComplete.finalSkillReward, SkillAcquisitionCategory.QuestReward);
             }
-
-            Debug.Log($"Quest Completed: {questToComplete.questTitle}");
         }
     }
 }

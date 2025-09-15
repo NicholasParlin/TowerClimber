@@ -1,15 +1,17 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 using System.Linq;
 
-// This component manages the player's unlocked titles and their currently equipped title.
 [RequireComponent(typeof(BuffManager), typeof(PlayerStats))]
 public class TitleManager : MonoBehaviour
 {
+    // --- TODO RESOLVED: Event for UI updates ---
+    public event Action OnEquippedTitleChanged;
+
     private List<Title> _unlockedTitles = new List<Title>();
     private Title _equippedTitle;
 
-    // References to other components for applying buffs.
     private BuffManager _buffManager;
     private PlayerStats _playerStats;
 
@@ -27,40 +29,25 @@ public class TitleManager : MonoBehaviour
         }
     }
 
-    public void SaveState()
-    {
-        SaveSystem.SavePlayerTitles(this);
-        Debug.Log("Player titles saved.");
-    }
+    public void SaveState() { SaveSystem.SavePlayerTitles(this); }
 
     public void LoadState(TitleDatabase titleDatabase)
     {
         SaveData data = SaveSystem.LoadPlayerTitles();
-        if (data == null || titleDatabase == null)
-        {
-            Debug.Log("No title save data found, starting fresh.");
-            return;
-        }
+        if (data == null || titleDatabase == null) return;
 
         _unlockedTitles.Clear();
         foreach (string titleName in data.unlockedTitleNames)
         {
             Title title = titleDatabase.GetTitleByName(titleName);
-            if (title != null)
-            {
-                _unlockedTitles.Add(title);
-            }
+            if (title != null) { _unlockedTitles.Add(title); }
         }
 
         if (!string.IsNullOrEmpty(data.equippedTitleName))
         {
             Title titleToEquip = titleDatabase.GetTitleByName(data.equippedTitleName);
-            if (titleToEquip != null)
-            {
-                EquipTitle(titleToEquip);
-            }
+            if (titleToEquip != null) { EquipTitle(titleToEquip); }
         }
-        Debug.Log("Player titles loaded.");
     }
     #endregion
 
@@ -70,63 +57,44 @@ public class TitleManager : MonoBehaviour
         _playerStats = GetComponent<PlayerStats>();
     }
 
-    /// <summary>
-    /// Public method to safely get the list of unlocked titles for UI display.
-    /// This is the new method that the CharacterPanelUI needs.
-    /// </summary>
-    public List<Title> GetUnlockedTitles()
-    {
-        return _unlockedTitles;
-    }
+    public List<Title> GetUnlockedTitles() => _unlockedTitles;
 
-    /// <summary>
-    /// Unlocks a new title for the player, adding it to their list of available titles.
-    /// </summary>
+    // --- TODO RESOLVED: Method for UI to check equipped status ---
+    public bool IsTitleEquipped(Title title) => title != null && _equippedTitle == title;
+
     public void UnlockTitle(Title titleToUnlock)
     {
         if (titleToUnlock != null && !_unlockedTitles.Contains(titleToUnlock))
         {
             _unlockedTitles.Add(titleToUnlock);
-            Debug.Log($"New Title Unlocked: {titleToUnlock.titleName}");
-            // Here you would fire an event to show a UI notification.
         }
     }
 
-    /// <summary>
-    /// Equips a new title, unequipping any previous one and applying the new stat bonuses.
-    /// </summary>
     public void EquipTitle(Title newTitle)
     {
         if (newTitle == null || !_unlockedTitles.Contains(newTitle)) return;
+        if (_equippedTitle == newTitle) return; // Don't re-equip the same title
 
-        // First, remove the buffs from the currently equipped title.
         UnequipCurrentTitle();
 
-        // Equip the new title and apply its buffs.
         _equippedTitle = newTitle;
         foreach (StatBonus bonus in _equippedTitle.statBonuses)
         {
             Stat targetStat = _playerStats.GetStat(bonus.statToBuff);
             if (targetStat != null)
             {
-                // The modifier has no duration (-1f) and its source is the Title asset itself.
                 var modifier = new StatModifier(bonus.value, -1f, _equippedTitle);
                 _buffManager.AddModifier(targetStat, modifier);
             }
         }
-        Debug.Log($"Title Equipped: {_equippedTitle.titleName}");
+        OnEquippedTitleChanged?.Invoke(); // Fire event to update UI
     }
 
-    /// <summary>
-    /// Unequips the currently active title and removes its associated stat bonuses.
-    /// </summary>
     public void UnequipCurrentTitle()
     {
         if (_equippedTitle == null) return;
-
-        // Use the BuffManager's ability to remove all modifiers from a specific source.
         _buffManager.RemoveAllModifiersFromSource(_equippedTitle);
-        Debug.Log($"Title Unequipped: {_equippedTitle.titleName}");
         _equippedTitle = null;
+        OnEquippedTitleChanged?.Invoke(); // Fire event to update UI
     }
 }

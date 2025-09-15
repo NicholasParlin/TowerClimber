@@ -39,37 +39,39 @@ public class PlayerInputManager : MonoBehaviour
 
     private void HandleUIPanelInput()
     {
-        // Listen for the inventory key.
         if (Input.GetKeyDown(inventoryKey))
         {
-            // This would call a public Toggle() method on the UI script
-            Debug.Log("Toggle Inventory");
+            // --- TODO RESOLVED ---
+            if (inventoryUI != null)
+            {
+                inventoryUI.Toggle();
+            }
         }
 
-        // Listen for the character panel key.
         if (Input.GetKeyDown(characterPanelKey))
         {
-            // This would call a public Toggle() method on the UI script
-            Debug.Log("Toggle Character Panel");
+            // --- TODO RESOLVED ---
+            if (characterPanelUI != null)
+            {
+                characterPanelUI.Toggle();
+            }
         }
 
-        // Listen for the pause menu key.
         if (Input.GetKeyDown(pauseMenuKey))
         {
+            // This is where you would call your Pause Menu manager.
             Debug.Log("Toggle Pause Menu");
         }
     }
 
     private void HandleActiveSkillInput()
     {
-        // Ensure we have a reference to the skill manager before trying to use skills.
         if (playerSkillManager == null) return;
 
         foreach (SkillBinding binding in activeSkillBindings)
         {
             if (Input.GetKeyDown(binding.key))
             {
-                // Tell the skill manager to try and use the skill from this binding.
                 playerSkillManager.AttemptToUseSkill(binding.archetype, binding.skillIndex);
             }
         }

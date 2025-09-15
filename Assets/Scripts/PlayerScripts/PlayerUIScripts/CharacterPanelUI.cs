@@ -1,6 +1,8 @@
 using UnityEngine;
 using UnityEngine.UI;
-// using TMPro; // Uncomment if you use TextMeshPro
+using System.Collections.Generic;
+using System.Linq;
+// using TMPro; // Uncomment if you use TextMeshPro and change Dropdown/Text references
 
 // This is the master script for the main character panel, which shows stats, skills, and titles.
 public class CharacterPanelUI : MonoBehaviour
@@ -18,70 +20,60 @@ public class CharacterPanelUI : MonoBehaviour
     [SerializeField] private Button strengthButton, dexterityButton, vitalityButton, intelligenceButton, wisdomButton, enduranceButton, senseButton;
     [SerializeField] private Text strengthText, dexterityText, vitalityText, intelligenceText, wisdomText, enduranceText, senseText;
 
-    [Header("Skill & Title Lists")]
+    [Header("Skill Lists (Assign Scroll View Content)")]
     [Tooltip("The parent object where active skill prefabs will be instantiated.")]
     [SerializeField] private Transform activeSkillsContentArea;
     [Tooltip("The parent object where passive skill prefabs will be instantiated.")]
     [SerializeField] private Transform passiveSkillsContentArea;
-    [Tooltip("The parent object where title prefabs will be instantiated.")]
-    [SerializeField] private Transform titlesContentArea;
-    [SerializeField] private GameObject skillListPrefab; // A prefab for displaying a skill
-    [SerializeField] private GameObject titleListPrefab; // A prefab for displaying a title
+    [SerializeField] private GameObject skillListPrefab;
+
+    [Header("Title Dropdown")]
+    [SerializeField] private Dropdown titleDropdown; // NEW: Reference to a Dropdown component
+    [SerializeField] private Text titleDescriptionText; // NEW: Text to show the selected title's description
 
     private void Start()
     {
-        // Ensure all references are set
         if (playerStats == null || playerSkillManager == null || titleManager == null)
         {
             Debug.LogError("One or more player references are not set on the CharacterPanelUI!");
             return;
         }
 
-        // Subscribe to the event so the UI automatically refreshes when stats change.
+        // Subscribe to events so the UI automatically refreshes when stats or titles change.
         playerStats.OnStatsUpdated += UpdateStatPanel;
+        titleManager.OnEquippedTitleChanged += UpdateTitleDescription;
 
-        // Initialize the panel state.
+        // Add a listener for when the user changes the dropdown selection.
+        titleDropdown.onValueChanged.AddListener(OnTitleSelectionChanged);
+
         characterPanel.SetActive(false);
         UpdateStatPanel();
     }
 
     private void OnDestroy()
     {
-        if (playerStats != null)
-        {
-            playerStats.OnStatsUpdated -= UpdateStatPanel;
-        }
+        if (playerStats != null) playerStats.OnStatsUpdated -= UpdateStatPanel;
+        if (titleManager != null) titleManager.OnEquippedTitleChanged -= UpdateTitleDescription;
     }
 
-    private void Update()
+    public void Toggle()
     {
-        // Simple toggle for opening/closing the character panel (e.g., with the 'C' key).
-        if (Input.GetKeyDown(KeyCode.C))
+        characterPanel.SetActive(!characterPanel.activeSelf);
+        if (characterPanel.activeSelf)
         {
-            characterPanel.SetActive(!characterPanel.activeSelf);
-            if (characterPanel.activeSelf)
-            {
-                RefreshAllPanels();
-            }
+            RefreshAllPanels();
         }
     }
 
-    /// <summary>
-    /// Refreshes all information displayed on the character panel.
-    /// </summary>
     public void RefreshAllPanels()
     {
         UpdateStatPanel();
         UpdateSkillPanel();
-        UpdateTitlePanel();
+        UpdateTitleDropdown();
     }
 
-    /// <summary>
-    /// Updates the stat display and the visibility of allocation buttons.
-    /// </summary>
     private void UpdateStatPanel()
     {
-        // Update stat texts
         strengthText.text = $"Strength: {playerStats.Strength.Value}";
         dexterityText.text = $"Dexterity: {playerStats.Dexterity.Value}";
         vitalityText.text = $"Vitality: {playerStats.Vitality.Value}";
@@ -90,7 +82,6 @@ public class CharacterPanelUI : MonoBehaviour
         enduranceText.text = $"Endurance: {playerStats.Endurance.Value}";
         senseText.text = $"Sense: {playerStats.Sense.Value}";
 
-        // Update unspent points display and button interactivity
         unspentPointsText.text = $"Unspent Points: {playerStats.unspentStatPoints}";
         bool hasPoints = playerStats.unspentStatPoints > 0;
         strengthButton.interactable = hasPoints;
@@ -102,29 +93,22 @@ public class CharacterPanelUI : MonoBehaviour
         senseButton.interactable = hasPoints;
     }
 
-    /// <summary>
-    /// Clears and repopulates the skill lists.
-    /// </summary>
     private void UpdateSkillPanel()
     {
-        // Clear existing lists
         foreach (Transform child in activeSkillsContentArea) Destroy(child.gameObject);
         foreach (Transform child in passiveSkillsContentArea) Destroy(child.gameObject);
 
-        // Populate lists
+        if (playerSkillManager.learnedSkills == null) return;
         foreach (var skillList in playerSkillManager.learnedSkills.Values)
         {
             foreach (var skill in skillList)
             {
-                // Instantiate the prefab
                 GameObject skillGO = Instantiate(skillListPrefab);
                 var skillUI = skillGO.GetComponent<SkillListingUI>();
 
-                // Check if the skill is passive to place it in the correct list
                 if (skill.isPassive)
                 {
                     skillGO.transform.SetParent(passiveSkillsContentArea, false);
-                    // Pass a reference to the PlayerSkillManager to handle toggling
                     skillUI.SetupPassive(skill, playerSkillManager);
                 }
                 else
@@ -137,27 +121,60 @@ public class CharacterPanelUI : MonoBehaviour
     }
 
     /// <summary>
-    /// Clears and repopulates the title list.
+    /// NEW: Rewritten method to populate the Dropdown instead of a list.
     /// </summary>
-    private void UpdateTitlePanel()
+    private void UpdateTitleDropdown()
     {
-        // Clear existing list
-        foreach (Transform child in titlesContentArea) Destroy(child.gameObject);
+        titleDropdown.ClearOptions();
 
-        // Populate list
-        foreach (var title in titleManager.GetUnlockedTitles())
+        List<string> titleNames = titleManager.GetUnlockedTitles().Select(t => t.titleName).ToList();
+        titleDropdown.AddOptions(titleNames);
+
+        // Find the index of the currently equipped title to set the dropdown's value.
+        int equippedIndex = -1;
+        for (int i = 0; i < titleManager.GetUnlockedTitles().Count; i++)
         {
-            GameObject titleGO = Instantiate(titleListPrefab, titlesContentArea, false);
-            var titleUI = titleGO.GetComponent<TitleListingUI>();
-            // Pass a reference to the TitleManager to handle equipping
-            titleUI.Setup(title, titleManager);
+            if (titleManager.IsTitleEquipped(titleManager.GetUnlockedTitles()[i]))
+            {
+                equippedIndex = i;
+                break;
+            }
         }
+
+        if (equippedIndex != -1)
+        {
+            // Set the value without triggering the onValueChanged event.
+            titleDropdown.SetValueWithoutNotify(equippedIndex);
+        }
+
+        UpdateTitleDescription();
     }
 
     /// <summary>
-    /// Public method to be called by the stat allocation buttons in the UI.
+    /// NEW: Called when the player selects a new title from the dropdown.
     /// </summary>
-    /// <param name="statIndex">0=Str, 1=Dex, 2=Vit, 3=Int, 4=Wis, 5=End, 6=Sen</param>
+    private void OnTitleSelectionChanged(int index)
+    {
+        Title selectedTitle = titleManager.GetUnlockedTitles()[index];
+        titleManager.EquipTitle(selectedTitle);
+    }
+
+    /// <summary>
+    /// NEW: Updates the description text based on the currently selected title.
+    /// </summary>
+    private void UpdateTitleDescription()
+    {
+        int currentIndex = titleDropdown.value;
+        if (currentIndex >= 0 && currentIndex < titleManager.GetUnlockedTitles().Count)
+        {
+            titleDescriptionText.text = titleManager.GetUnlockedTitles()[currentIndex].description;
+        }
+        else
+        {
+            titleDescriptionText.text = "";
+        }
+    }
+
     public void AllocateStat(int statIndex)
     {
         playerStats.AllocateStatPoint((StatType)statIndex);
