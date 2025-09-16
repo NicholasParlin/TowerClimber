@@ -25,11 +25,14 @@ public class CharacterPanelUI : MonoBehaviour
     [SerializeField] private Transform activeSkillsContentArea;
     [Tooltip("The parent object where passive skill prefabs will be instantiated.")]
     [SerializeField] private Transform passiveSkillsContentArea;
-    [SerializeField] private GameObject skillListPrefab;
 
     [Header("Title Dropdown")]
-    [SerializeField] private Dropdown titleDropdown; // NEW: Reference to a Dropdown component
-    [SerializeField] private Text titleDescriptionText; // NEW: Text to show the selected title's description
+    [SerializeField] private Dropdown titleDropdown;
+    [SerializeField] private Text titleDescriptionText;
+
+    // Lists to keep track of the active UI objects from the pool.
+    private List<GameObject> _activeSkillListingObjects = new List<GameObject>();
+    private List<GameObject> _passiveSkillListingObjects = new List<GameObject>();
 
     private void Start()
     {
@@ -41,7 +44,7 @@ public class CharacterPanelUI : MonoBehaviour
 
         // Subscribe to events so the UI automatically refreshes when stats or titles change.
         playerStats.OnStatsUpdated += UpdateStatPanel;
-        titleManager.OnEquippedTitleChanged += UpdateTitleDescription;
+        titleManager.OnEquippedTitleChanged += UpdateTitleDropdown;
 
         // Add a listener for when the user changes the dropdown selection.
         titleDropdown.onValueChanged.AddListener(OnTitleSelectionChanged);
@@ -53,7 +56,7 @@ public class CharacterPanelUI : MonoBehaviour
     private void OnDestroy()
     {
         if (playerStats != null) playerStats.OnStatsUpdated -= UpdateStatPanel;
-        if (titleManager != null) titleManager.OnEquippedTitleChanged -= UpdateTitleDescription;
+        if (titleManager != null) titleManager.OnEquippedTitleChanged -= UpdateTitleDropdown;
     }
 
     public void Toggle()
@@ -95,42 +98,48 @@ public class CharacterPanelUI : MonoBehaviour
 
     private void UpdateSkillPanel()
     {
-        foreach (Transform child in activeSkillsContentArea) Destroy(child.gameObject);
-        foreach (Transform child in passiveSkillsContentArea) Destroy(child.gameObject);
+        // Return all existing UI objects to the pool.
+        foreach (var skillObject in _activeSkillListingObjects) { ObjectPooler.Instance.ReturnToPool("SkillListing", skillObject); }
+        foreach (var skillObject in _passiveSkillListingObjects) { ObjectPooler.Instance.ReturnToPool("SkillListing", skillObject); }
+        _activeSkillListingObjects.Clear();
+        _passiveSkillListingObjects.Clear();
 
         if (playerSkillManager.learnedSkills == null) return;
+
+        // Get new UI objects from the pool for each learned skill.
         foreach (var skillList in playerSkillManager.learnedSkills.Values)
         {
             foreach (var skill in skillList)
             {
-                GameObject skillGO = Instantiate(skillListPrefab);
+                GameObject skillGO = ObjectPooler.Instance.GetFromPool("SkillListing", Vector3.zero, Quaternion.identity);
+                if (skillGO == null) continue;
+
                 var skillUI = skillGO.GetComponent<SkillListingUI>();
 
                 if (skill.isPassive)
                 {
                     skillGO.transform.SetParent(passiveSkillsContentArea, false);
                     skillUI.SetupPassive(skill, playerSkillManager);
+                    _passiveSkillListingObjects.Add(skillGO);
                 }
                 else
                 {
                     skillGO.transform.SetParent(activeSkillsContentArea, false);
                     skillUI.SetupActive(skill);
+                    _activeSkillListingObjects.Add(skillGO);
                 }
             }
         }
     }
 
-    /// <summary>
-    /// NEW: Rewritten method to populate the Dropdown instead of a list.
-    /// </summary>
     private void UpdateTitleDropdown()
     {
-        titleDropdown.ClearOptions();
+        titleDropdown.onValueChanged.RemoveListener(OnTitleSelectionChanged); // Prevent firing event during refresh
 
+        titleDropdown.ClearOptions();
         List<string> titleNames = titleManager.GetUnlockedTitles().Select(t => t.titleName).ToList();
         titleDropdown.AddOptions(titleNames);
 
-        // Find the index of the currently equipped title to set the dropdown's value.
         int equippedIndex = -1;
         for (int i = 0; i < titleManager.GetUnlockedTitles().Count; i++)
         {
@@ -143,25 +152,20 @@ public class CharacterPanelUI : MonoBehaviour
 
         if (equippedIndex != -1)
         {
-            // Set the value without triggering the onValueChanged event.
             titleDropdown.SetValueWithoutNotify(equippedIndex);
         }
 
         UpdateTitleDescription();
+
+        titleDropdown.onValueChanged.AddListener(OnTitleSelectionChanged); // Re-add listener
     }
 
-    /// <summary>
-    /// NEW: Called when the player selects a new title from the dropdown.
-    /// </summary>
     private void OnTitleSelectionChanged(int index)
     {
         Title selectedTitle = titleManager.GetUnlockedTitles()[index];
         titleManager.EquipTitle(selectedTitle);
     }
 
-    /// <summary>
-    /// NEW: Updates the description text based on the currently selected title.
-    /// </summary>
     private void UpdateTitleDescription()
     {
         int currentIndex = titleDropdown.value;

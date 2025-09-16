@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-// This script manages the main inventory UI panel.
+// This script manages the main inventory UI panel and now uses the Object Pooler for performance.
 public class InventoryUI : MonoBehaviour
 {
     [Header("UI References")]
@@ -10,31 +10,23 @@ public class InventoryUI : MonoBehaviour
     [Tooltip("The main UI panel for the inventory.")]
     [SerializeField] private GameObject inventoryPanel;
 
-    [Header("Prefabs")]
-    [Tooltip("The UI prefab for a single inventory slot.")]
-    [SerializeField] private GameObject inventorySlotPrefab;
-
+    // A list to keep track of the currently active slot GameObjects being used from the pool.
+    private List<GameObject> _activeSlotObjects = new List<GameObject>();
     private InventoryManager _inventoryManager;
 
     void Start()
     {
-        // Get the singleton instance of the InventoryManager.
         _inventoryManager = InventoryManager.Instance;
-
-        // Subscribe to the inventory changed event. This is the core of the efficient UI.
-        // The UpdateUI method will now only be called when the inventory actually changes.
         if (_inventoryManager != null)
         {
             _inventoryManager.OnInventoryChanged += UpdateUI;
         }
-
-        // Start with the inventory panel closed.
         inventoryPanel.SetActive(false);
     }
 
     private void OnDestroy()
     {
-        // Always unsubscribe from events when this object is destroyed to prevent errors.
+        // Always unsubscribe from events to prevent errors.
         if (_inventoryManager != null)
         {
             _inventoryManager.OnInventoryChanged -= UpdateUI;
@@ -42,14 +34,11 @@ public class InventoryUI : MonoBehaviour
     }
 
     /// <summary>
-    /// Toggles the visibility of the inventory panel. This method will be called
-    /// by the PlayerInputManager.
+    /// Toggles the visibility of the inventory panel. This will be called by the PlayerInputManager.
     /// </summary>
     public void Toggle()
     {
         inventoryPanel.SetActive(!inventoryPanel.activeSelf);
-
-        // When we open the panel, we should always refresh the UI to ensure it's up to date.
         if (inventoryPanel.activeSelf)
         {
             UpdateUI();
@@ -57,27 +46,41 @@ public class InventoryUI : MonoBehaviour
     }
 
     /// <summary>
-    /// Redraws the entire inventory UI based on the current state of the InventoryManager.
+    /// Redraws the entire inventory UI using the Object Pooler.
     /// </summary>
     private void UpdateUI()
     {
-        if (_inventoryManager == null || !inventoryPanel.activeSelf) return;
+        if (!_inventoryManager || !inventoryPanel.activeSelf) return;
 
-        // Clear all the existing slot UIs to prevent duplicates.
-        foreach (Transform child in itemsParent)
+        // --- Step 1: Return all currently active UI slots to the pool ---
+        foreach (GameObject slotObject in _activeSlotObjects)
         {
-            Destroy(child.gameObject);
+            // We use the tag "InventorySlot", which we will define in the ObjectPooler's Inspector.
+            ObjectPooler.Instance.ReturnToPool("InventorySlot", slotObject);
         }
+        // Clear the list of active objects.
+        _activeSlotObjects.Clear();
 
-        // For each slot in the player's inventory, create a new UI element.
+        // --- Step 2: Get a new UI slot from the pool for each item in the inventory ---
         foreach (InventorySlot slot in _inventoryManager.inventory)
         {
-            GameObject slotGO = Instantiate(inventorySlotPrefab, itemsParent);
-            InventorySlotUI slotUI = slotGO.GetComponent<InventorySlotUI>();
-            if (slotUI != null)
+            // Instead of Instantiate, we now call the pooler.
+            GameObject slotGO = ObjectPooler.Instance.GetFromPool("InventorySlot", itemsParent.position, Quaternion.identity);
+
+            if (slotGO != null)
             {
-                // Tell the individual slot UI to display the item's data.
-                slotUI.DisplayItem(slot);
+                // Set the parent to the content area and reset its scale.
+                slotGO.transform.SetParent(itemsParent);
+                slotGO.transform.localScale = Vector3.one;
+
+                // Get the UI component and display the item's data.
+                InventorySlotUI slotUI = slotGO.GetComponent<InventorySlotUI>();
+                if (slotUI != null)
+                {
+                    slotUI.DisplayItem(slot);
+                    // Add the object to our list of active slots for the next refresh.
+                    _activeSlotObjects.Add(slotGO);
+                }
             }
         }
     }

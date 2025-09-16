@@ -19,6 +19,9 @@ public abstract class Skill : ScriptableObject
     public float activationTime = 0.5f;
     public float cooldown = 1f;
 
+    [Tooltip("If this skill fires a projectile, assign its prefab here.")]
+    public GameObject projectilePrefab;
+
     [Header("Resource Costs")]
     public float manaCost = 0;
     public float energyCost = 0;
@@ -26,5 +29,6 @@ public abstract class Skill : ScriptableObject
     public float anguishCost = 0;
 
     // This method defines what happens when the skill is used.
+    // It must be implemented by any class that inherits from this one.
     public abstract void Activate(GameObject user);
 }

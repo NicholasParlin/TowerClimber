@@ -6,7 +6,7 @@ using System.Linq;
 [RequireComponent(typeof(BuffManager), typeof(PlayerStats))]
 public class TitleManager : MonoBehaviour
 {
-    // --- TODO RESOLVED: Event for UI updates ---
+    // This event fires whenever the equipped title changes, allowing the UI to react.
     public event Action OnEquippedTitleChanged;
 
     private List<Title> _unlockedTitles = new List<Title>();
@@ -59,7 +59,9 @@ public class TitleManager : MonoBehaviour
 
     public List<Title> GetUnlockedTitles() => _unlockedTitles;
 
-    // --- TODO RESOLVED: Method for UI to check equipped status ---
+    /// <summary>
+    /// Public method for the UI to check if a specific title is the currently equipped one.
+    /// </summary>
     public bool IsTitleEquipped(Title title) => title != null && _equippedTitle == title;
 
     public void UnlockTitle(Title titleToUnlock)
@@ -73,7 +75,7 @@ public class TitleManager : MonoBehaviour
     public void EquipTitle(Title newTitle)
     {
         if (newTitle == null || !_unlockedTitles.Contains(newTitle)) return;
-        if (_equippedTitle == newTitle) return; // Don't re-equip the same title
+        if (_equippedTitle == newTitle) return; // Don't do anything if we're re-equipping the same title.
 
         UnequipCurrentTitle();
 
@@ -87,7 +89,7 @@ public class TitleManager : MonoBehaviour
                 _buffManager.AddModifier(targetStat, modifier);
             }
         }
-        OnEquippedTitleChanged?.Invoke(); // Fire event to update UI
+        OnEquippedTitleChanged?.Invoke(); // Fire the event to update the UI.
     }
 
     public void UnequipCurrentTitle()
@@ -95,6 +97,6 @@ public class TitleManager : MonoBehaviour
         if (_equippedTitle == null) return;
         _buffManager.RemoveAllModifiersFromSource(_equippedTitle);
         _equippedTitle = null;
-        OnEquippedTitleChanged?.Invoke(); // Fire event to update UI
+        OnEquippedTitleChanged?.Invoke(); // Fire the event to update the UI.
     }
 }

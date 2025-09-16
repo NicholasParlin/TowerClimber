@@ -8,7 +8,7 @@ public class EnemyHealth : MonoBehaviour
     [Tooltip("A unique string ID for this enemy type (e.g., 'WildBoar', 'GoblinScrapper'). This MUST match the ID used in Kill Objectives.")]
     [SerializeField] private string enemyID;
 
-    // Reference to the Loot Drop component.
+    // References to other components on this enemy.
     private EnemyLootDrop _lootDrop;
     private CharacterStatsBase _stats;
     private bool _isDead = false;
@@ -28,7 +28,6 @@ public class EnemyHealth : MonoBehaviour
 
         // Pass the damage to the stats component to handle the health reduction.
         _stats.TakeDamage(amount);
-        // In a full game, you might want to show a floating damage number here.
 
         // Check if the enemy has died.
         if (_stats.currentHealth <= 0)
@@ -38,7 +37,7 @@ public class EnemyHealth : MonoBehaviour
     }
 
     /// <summary>
-    /// Handles the death of the enemy.
+    /// Handles the death of the enemy, firing events and returning it to the object pool.
     /// </summary>
     private void Die()
     {
@@ -54,9 +53,17 @@ public class EnemyHealth : MonoBehaviour
             _lootDrop.DropLoot();
         }
 
-        // Here you would trigger a death animation, and then destroy the object after a delay.
-        // For example:
-        // GetComponent<Animator>().SetTrigger("Die");
-        // Destroy(gameObject, 3f); 
+        // Return this GameObject to the object pool instead of destroying it.
+        // The enemyID should match the pool tag for this to work seamlessly.
+        ObjectPooler.Instance.ReturnToPool(enemyID, this.gameObject);
+    }
+
+    /// <summary>
+    /// Resets the health state of this enemy. Called by the EnemyController when it's reused from the pool.
+    /// </summary>
+    public void ResetHealth()
+    {
+        _isDead = false;
+        // The stats component will handle restoring the health value to full.
     }
 }

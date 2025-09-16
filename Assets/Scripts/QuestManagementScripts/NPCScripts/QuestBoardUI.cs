@@ -1,71 +1,66 @@
 using UnityEngine;
 using System.Collections.Generic;
 
-// This script manages the UI for the Climber's Guild Quest Board.
+// This script manages the UI for the Climber's Guild Quest Board and now uses an Object Pooler.
 public class QuestBoardUI : MonoBehaviour
 {
     [Header("UI References")]
     [Tooltip("The parent object where quest listing prefabs will be instantiated.")]
     [SerializeField] private Transform questListContentArea;
-    [Tooltip("The UI prefab for a single quest listing.")]
-    [SerializeField] private GameObject questListingPrefab;
     [Tooltip("The main UI panel for the quest board.")]
     [SerializeField] private GameObject questBoardPanel;
 
     private List<QuestGiver> _allQuestGivers = new List<QuestGiver>();
+    // A list to keep track of the currently active UI objects from the pool.
+    private List<GameObject> _activeListingObjects = new List<GameObject>();
 
     private void Start()
     {
-        // Find all QuestGivers using the modern, non-obsolete method.
         _allQuestGivers.AddRange(FindObjectsByType<QuestGiver>(FindObjectsSortMode.None));
-        questBoardPanel.SetActive(false); // Start with the panel closed.
+        questBoardPanel.SetActive(false);
     }
 
-    /// <summary>
-    /// Opens the quest board UI and populates it with available quests.
-    /// This would be called by a player interaction script (e.g., clicking on the board).
-    /// </summary>
     public void OpenQuestBoard()
     {
         questBoardPanel.SetActive(true);
         PopulateQuestList();
     }
 
-    /// <summary>
-    /// Closes the quest board UI.
-    /// </summary>
     public void CloseQuestBoard()
     {
         questBoardPanel.SetActive(false);
     }
 
-    /// <summary>
-    /// Clears and then rebuilds the list of quests on the board.
-    /// </summary>
     private void PopulateQuestList()
     {
-        // Clear any existing listings before repopulating.
-        foreach (Transform child in questListContentArea)
+        // --- REFACTORED: Return existing objects to the pool ---
+        foreach (GameObject listingObject in _activeListingObjects)
         {
-            Destroy(child.gameObject);
+            // Use the tag you will set up in the ObjectPooler's Inspector
+            ObjectPooler.Instance.ReturnToPool("QuestListing", listingObject);
         }
+        _activeListingObjects.Clear();
 
         // Go through all known QuestGivers in the scene.
         foreach (QuestGiver giver in _allQuestGivers)
         {
-            // Use the public property to access the quest data.
             Quest questData = giver.QuestData;
             if (questData != null && questData.currentState == QuestState.NotStarted)
             {
-                // Create a new UI element from the prefab.
-                GameObject listingGO = Instantiate(questListingPrefab, questListContentArea);
+                // --- REFACTORED: Get object from the pool instead of instantiating ---
+                GameObject listingGO = ObjectPooler.Instance.GetFromPool("QuestListing", questListContentArea.position, Quaternion.identity);
 
-                // Get the component that holds the text fields on the prefab.
-                QuestListingUI listingUI = listingGO.GetComponent<QuestListingUI>();
-                if (listingUI != null)
+                if (listingGO != null)
                 {
-                    // Pass the quest data to the UI element to display it.
-                    listingUI.Setup(questData);
+                    listingGO.transform.SetParent(questListContentArea);
+                    listingGO.transform.localScale = Vector3.one;
+
+                    QuestListingUI listingUI = listingGO.GetComponent<QuestListingUI>();
+                    if (listingUI != null)
+                    {
+                        listingUI.Setup(questData);
+                        _activeListingObjects.Add(listingGO); // Track the active object
+                    }
                 }
             }
         }

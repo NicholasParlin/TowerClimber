@@ -11,11 +11,16 @@ public class PlayerInputManager : MonoBehaviour
     [SerializeField] private InventoryUI inventoryUI;
     [Tooltip("Assign the GameObject with the CharacterPanelUI component.")]
     [SerializeField] private CharacterPanelUI characterPanelUI;
+    [Tooltip("Assign the GameObject with the PauseMenuUI component.")]
+    [SerializeField] private PauseMenuUI pauseMenuUI;
+    [Tooltip("Assign the GameObject with the PlayerInteraction component.")]
+    [SerializeField] private PlayerInteraction playerInteraction; // New reference
 
-    [Header("UI Key Bindings")]
+    [Header("UI & Interaction Key Bindings")]
     [SerializeField] private KeyCode inventoryKey = KeyCode.I;
     [SerializeField] private KeyCode characterPanelKey = KeyCode.C;
     [SerializeField] private KeyCode pauseMenuKey = KeyCode.Escape;
+    [SerializeField] private KeyCode interactKey = KeyCode.E; // New key binding
 
     [Header("Active Skill Bindings")]
     [Tooltip("Set up which keys correspond to which active skills here.")]
@@ -27,13 +32,25 @@ public class PlayerInputManager : MonoBehaviour
     {
         public KeyCode key;
         public Archetype archetype;
-        [Tooltip("The index of the skill in the archetype list (0 = first skill, 1 = second, etc.)")]
         public int skillIndex;
     }
 
     private void Update()
     {
+        // The pause key should always be checked, even when the game is paused.
+        if (Input.GetKeyDown(pauseMenuKey))
+        {
+            if (pauseMenuUI != null) { pauseMenuUI.TogglePauseMenu(); }
+        }
+
+        // Don't process any other game input if the game is paused.
+        if (PauseMenuUI.isGamePaused)
+        {
+            return;
+        }
+
         HandleUIPanelInput();
+        HandleInteractionInput(); // New input handler
         HandleActiveSkillInput();
     }
 
@@ -41,33 +58,30 @@ public class PlayerInputManager : MonoBehaviour
     {
         if (Input.GetKeyDown(inventoryKey))
         {
-            // --- TODO RESOLVED ---
-            if (inventoryUI != null)
-            {
-                inventoryUI.Toggle();
-            }
+            if (inventoryUI != null) { inventoryUI.Toggle(); }
         }
 
         if (Input.GetKeyDown(characterPanelKey))
         {
-            // --- TODO RESOLVED ---
-            if (characterPanelUI != null)
-            {
-                characterPanelUI.Toggle();
-            }
+            if (characterPanelUI != null) { characterPanelUI.Toggle(); }
         }
+    }
 
-        if (Input.GetKeyDown(pauseMenuKey))
+    // This method handles the interaction key press.
+    private void HandleInteractionInput()
+    {
+        if (Input.GetKeyDown(interactKey))
         {
-            // This is where you would call your Pause Menu manager.
-            Debug.Log("Toggle Pause Menu");
+            if (playerInteraction != null)
+            {
+                playerInteraction.TryInteract();
+            }
         }
     }
 
     private void HandleActiveSkillInput()
     {
         if (playerSkillManager == null) return;
-
         foreach (SkillBinding binding in activeSkillBindings)
         {
             if (Input.GetKeyDown(binding.key))

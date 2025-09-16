@@ -106,6 +106,18 @@ public class BuffManager : MonoBehaviour
     }
 
     /// <summary>
+    /// Clears all active modifiers from this character. Called when an enemy is reset by the pooler.
+    /// </summary>
+    public void ClearAllModifiers()
+    {
+        foreach (var activeMod in _activeModifiers.ToList())
+        {
+            RemoveModifier(activeMod.TargetStat, activeMod.Modifier);
+        }
+        _activeModifiers.Clear();
+    }
+
+    /// <summary>
     /// A helper method to safely notify the GameManager of a change to the player's Sense stat.
     /// </summary>
     private void CheckForSenseChangeEvent(Stat stat)
