@@ -1,23 +1,15 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-/// <summary>
-/// The base class for both Player and Enemy skill managers.
-/// Handles the core logic for learning, activating, and managing cooldowns for skills.
-/// </summary>
 public abstract class SkillManagerBase : MonoBehaviour
 {
-    // A dictionary to hold learned skills, sorted by their archetype for easy access.
     public Dictionary<Archetype, List<Skill>> learnedSkills { get; protected set; } = new Dictionary<Archetype, List<Skill>>();
 
-    // A dictionary to track the current cooldown time for each skill.
     protected Dictionary<Skill, float> skillCooldowns = new Dictionary<Skill, float>();
 
-    // Variables to handle activation time, preventing skill spamming.
     protected bool _isActivating;
     protected float _currentActivationTime;
 
-    // References to other essential components on this character.
     protected CharacterStatsBase _stats;
 
     protected virtual void Awake()
@@ -31,9 +23,6 @@ public abstract class SkillManagerBase : MonoBehaviour
         HandleActivationLock();
     }
 
-    /// <summary>
-    /// Adds a new skill to the character's learned skills during gameplay.
-    /// </summary>
     public bool LearnNewSkill(Skill skillToLearn)
     {
         if (skillToLearn == null) return false;
@@ -52,22 +41,14 @@ public abstract class SkillManagerBase : MonoBehaviour
         return false;
     }
 
-    /// <summary>
-    /// This is the main method that child classes will call. 
-    /// It's marked 'virtual' so it can be overridden.
-    /// </summary>
-    protected virtual void TryToUseSkill(Skill skill)
+    protected virtual void TryToUseSkill(Skill skill, GameObject target)
     {
         if (CanUseSkill(skill))
         {
-            ActivateSkill(skill);
+            ActivateSkill(skill, target);
         }
     }
 
-    /// <summary>
-    /// Checks all conditions to see if a skill can be used.
-    /// </summary>
-    /// <returns>True if the skill can be activated.</returns>
     protected bool CanUseSkill(Skill skill)
     {
         if (skill == null) return false;
@@ -77,37 +58,40 @@ public abstract class SkillManagerBase : MonoBehaviour
         return true;
     }
 
-    /// <summary>
-    /// Spends resources and triggers the skill's activation logic and cooldowns.
-    /// </summary>
-    protected void ActivateSkill(Skill skill)
+    protected virtual void ActivateSkill(Skill skill, GameObject target)
     {
         SpendResources(skill);
-        skill.Activate(gameObject);
+
+        // We now pass 'this' (the SkillManager) to the coroutine.
+        StartCoroutine(skill.Activate(this, this.gameObject, target));
 
         _isActivating = true;
-        _currentActivationTime = skill.activationTime;
+        _currentActivationTime = skill.baseActivationTime;
+    }
 
+    // NEW PUBLIC METHOD: The Skill coroutine will call this when its sequence is finished.
+    public void ApplyCooldown(Skill skill)
+    {
         if (skill.cooldown > 0)
         {
             skillCooldowns[skill] = skill.cooldown;
         }
     }
 
-    private bool HasEnoughResources(Skill skill)
+    protected bool HasEnoughResources(Skill skill)
     {
         if (_stats.currentMana < skill.manaCost) return false;
         if (_stats.currentEnergy < skill.energyCost) return false;
-        if (_stats.currentHealth <= skill.healthCost) return false; // Can't kill yourself
+        if (_stats.currentHealth <= skill.healthCost) return false;
         if (_stats.currentAnguish < skill.anguishCost) return false;
         return true;
     }
 
-    private void SpendResources(Skill skill)
+    protected void SpendResources(Skill skill)
     {
         _stats.SpendMana(skill.manaCost);
         _stats.SpendEnergy(skill.energyCost);
-        _stats.TakeDamage(skill.healthCost); // Health cost is treated as damage
+        _stats.TakeDamage(skill.healthCost);
         _stats.SpendAnguish(skill.anguishCost);
     }
 

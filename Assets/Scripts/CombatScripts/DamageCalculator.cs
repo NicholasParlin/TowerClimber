@@ -4,46 +4,74 @@ using UnityEngine;
 public static class DamageCalculator
 {
     /// <summary>
-    /// Calculates the final damage after considering attacker's stats and defender's resistances.
+    /// Calculates final damage after considering stats, resistances, and critical hits.
     /// </summary>
-    /// <param name="attackerStats">The stats of the character dealing damage.</param>
-    /// <param name="defenderStats">The stats of the character receiving damage.</param>
-    /// <param name="baseDamage">The base damage of the weapon or skill being used.</param>
-    /// <param name="damageType">The type of damage (Physical or Magical).</param>
-    /// <returns>The final, calculated damage amount.</returns>
-    public static float CalculateDamage(CharacterStatsBase attackerStats, CharacterStatsBase defenderStats, float baseDamage, DamageType damageType)
+    public static float CalculateDamage(CharacterStatsBase attackerStats, CharacterStatsBase defenderStats, float baseDamage, DamageType damageType, bool isGuaranteedCrit = false, bool canCrit = true)
     {
         float totalDamage = baseDamage;
 
         // 1. Add bonus damage from the attacker's primary stat.
         if (damageType == DamageType.Physical)
         {
-            // Physical damage scales with Strength. (e.g., 1 Strength = +1 damage)
             totalDamage += attackerStats.Strength.Value;
         }
-        else if (damageType == DamageType.Magical)
+        else // All magical damage types scale with Intelligence
         {
-            // Magical damage scales with Intelligence.
             totalDamage += attackerStats.Intelligence.Value;
         }
 
-        // 2. Calculate damage reduction from the defender's resistance.
-        float resistance = 0;
+        // 2. Check for a critical hit, if allowed.
+        if (canCrit)
+        {
+            float critChance = Mathf.Sqrt(attackerStats.Sense.Value / 2500f);
+            bool isCriticalHit = isGuaranteedCrit || Random.value <= critChance;
+
+            if (isCriticalHit)
+            {
+                totalDamage *= attackerStats.CriticalDamage.Value;
+                Debug.Log("CRITICAL HIT!");
+            }
+        }
+
+        // 3. Calculate damage reduction from the defender's appropriate resistances.
+        float totalResistance = 0;
         if (damageType == DamageType.Physical)
         {
-            resistance = defenderStats.Armor.Value;
+            totalResistance = defenderStats.Armor.Value;
         }
-        else if (damageType == DamageType.Magical)
+        else
         {
-            resistance = defenderStats.MagicResistance.Value;
+            totalResistance = defenderStats.MagicResistance.Value;
+            switch (damageType)
+            {
+                case DamageType.Fire:
+                    totalResistance += defenderStats.FireResistance.Value;
+                    break;
+                case DamageType.Water:
+                    totalResistance += defenderStats.WaterResistance.Value;
+                    break;
+                case DamageType.Nature:
+                    totalResistance += defenderStats.NatureResistance.Value;
+                    break;
+                case DamageType.Hex:
+                    totalResistance += defenderStats.HexResistance.Value;
+                    break;
+                case DamageType.Necro:
+                    totalResistance += defenderStats.NecroResistance.Value;
+                    break;
+                case DamageType.Wind:
+                    totalResistance += defenderStats.WindResistance.Value;
+                    break;
+                case DamageType.Lightning:
+                    totalResistance += defenderStats.LightningResistance.Value;
+                    break;
+            }
         }
 
-        // A common formula for damage reduction: Damage * (100 / (100 + Resistance))
-        // This provides diminishing returns for stacking resistance.
-        float damageMultiplier = 100f / (100f + resistance);
+        // 4. Apply the resistance using the diminishing returns formula.
+        float damageMultiplier = 100f / (100f + totalResistance);
         float finalDamage = totalDamage * damageMultiplier;
 
-        // 3. Ensure a minimum amount of damage is always dealt.
-        return Mathf.Max(1, finalDamage);
+        return Mathf.Max(1, finalDamage); // Ensure at least 1 damage is always dealt.
     }
 }

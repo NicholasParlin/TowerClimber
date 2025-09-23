@@ -12,6 +12,9 @@ public class EnemyLootDrop : MonoBehaviour
     [Tooltip("How far the loot can scatter from the enemy's death position.")]
     [SerializeField] private float dropRadius = 1.5f;
 
+    // NEW: Public property to expose the loot table for the UI to read.
+    public LootTable PotentialLoot => lootTable;
+
 
     /// <summary>
     /// This method is called by the EnemyHealth script when the enemy dies.

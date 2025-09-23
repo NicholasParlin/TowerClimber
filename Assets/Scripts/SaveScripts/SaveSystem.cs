@@ -5,6 +5,27 @@ using System.Runtime.Serialization.Formatters.Binary;
 // A static class to handle all low-level file saving and loading operations.
 public static class SaveSystem
 {
+    // --- NEW: Method to delete all save data ---
+    public static void DeleteAllSaveData()
+    {
+        string[] paths = {
+            GetStatsSavePath(),
+            GetSkillsSavePath(),
+            GetQuestsSavePath(),
+            GetInventorySavePath(),
+            GetTitlesSavePath()
+        };
+
+        foreach (string path in paths)
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+                Debug.Log($"Deleted save file at: {path}");
+            }
+        }
+    }
+
     // --- Player Stats Save/Load ---
     private static string GetStatsSavePath()
     {

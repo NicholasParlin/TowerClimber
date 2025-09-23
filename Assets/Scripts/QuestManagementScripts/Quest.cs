@@ -1,10 +1,8 @@
 using UnityEngine;
 using System.Collections.Generic;
 
-// Defines the different states a quest can be in.
 public enum QuestState { NotStarted, Active, ReadyForTurnIn, Completed }
 
-// A helper class to group objectives into sequential stages.
 [System.Serializable]
 public class QuestStage
 {
@@ -13,7 +11,7 @@ public class QuestStage
     public List<QuestObjective> objectives = new List<QuestObjective>();
 }
 
-// The ScriptableObject template for every quest in the game.
+// The Quest class is now a pure data container.
 [CreateAssetMenu(fileName = "New Quest", menuName = "Quests/Quest")]
 public class Quest : ScriptableObject
 {
@@ -37,7 +35,6 @@ public class Quest : ScriptableObject
     [HideInInspector] public QuestState currentState = QuestState.NotStarted;
 }
 
-// The base class for all quest objectives.
 [System.Serializable]
 public abstract class QuestObjective
 {
@@ -53,8 +50,6 @@ public abstract class QuestObjective
     public abstract void CheckProgress(object data);
     public abstract QuestObjective Clone();
 }
-
-// --- Concrete Objective Types ---
 
 [System.Serializable]
 public class KillObjective : QuestObjective
@@ -144,9 +139,7 @@ public class TalkObjective : QuestObjective
     {
         if (isComplete) return;
         if (data is string npcID && npcID == targetNpcID)
-        {
             isComplete = true;
-        }
     }
 
     public override QuestObjective Clone()

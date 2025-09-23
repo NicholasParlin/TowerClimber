@@ -3,8 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using System.Linq;
 
-// A helper class to store an item and its quantity in an inventory slot.
-[System.Serializable]
+// The InventorySlot class is now a pure data container.
 public class InventorySlot
 {
     public Item item;
@@ -16,53 +15,32 @@ public class InventorySlot
         this.quantity = quantity;
     }
 
-    public void AddQuantity(int amount)
-    {
-        quantity += amount;
-    }
+    public void AddQuantity(int amount) { quantity += amount; }
+    public void RemoveQuantity(int amount) { quantity -= amount; }
 }
 
-// This component manages the player's inventory, including currency and items.
 public class InventoryManager : MonoBehaviour
 {
     public static InventoryManager Instance { get; private set; }
-
-    // This event will fire whenever the inventory (items or gold) changes, primarily for UI updates.
     public event Action OnInventoryChanged;
-
     public int currentGold { get; private set; }
     public List<InventorySlot> inventory = new List<InventorySlot>();
 
     #region Save System Integration
-    // This is the data structure that will be saved to a file.
     [System.Serializable]
     public class SaveData
     {
         public int currentGold;
         public List<string> itemNames;
         public List<int> itemQuantities;
-
         public SaveData(InventoryManager inventory)
         {
             currentGold = inventory.currentGold;
-            // Use LINQ to efficiently get lists of the item names and quantities for saving.
             itemNames = inventory.inventory.Select(slot => slot.item.name).ToList();
             itemQuantities = inventory.inventory.Select(slot => slot.quantity).ToList();
         }
     }
-
-    /// <summary>
-    /// Tells the static SaveSystem to save the current state of this inventory.
-    /// </summary>
-    public void SaveState()
-    {
-        SaveSystem.SavePlayerInventory(this);
-        Debug.Log("Player inventory saved.");
-    }
-
-    /// <summary>
-    /// Loads the inventory state from a save file.
-    /// </summary>
+    public void SaveState() { SaveSystem.SavePlayerInventory(this); }
     public void LoadState(ItemDatabase itemDatabase)
     {
         SaveData data = SaveSystem.LoadPlayerInventory();
@@ -70,24 +48,14 @@ public class InventoryManager : MonoBehaviour
         {
             currentGold = data.currentGold;
             inventory.Clear();
-            // Reconstruct the inventory list from the saved names and quantities.
             for (int i = 0; i < data.itemNames.Count; i++)
             {
                 Item item = itemDatabase.GetItemByName(data.itemNames[i]);
-                if (item != null)
-                {
-                    inventory.Add(new InventorySlot(item, data.itemQuantities[i]));
-                }
+                if (item != null) { inventory.Add(new InventorySlot(item, data.itemQuantities[i])); }
             }
-            Debug.Log("Player inventory loaded.");
         }
-        else
-        {
-            // Set starting gold for a new game if no save file is found.
-            currentGold = 50;
-            Debug.Log("No inventory save data found, starting with default gold.");
-        }
-        OnInventoryChanged?.Invoke(); // Fire event to update UI after loading
+        else { currentGold = 50; }
+        OnInventoryChanged?.Invoke();
     }
     #endregion
 
@@ -117,8 +85,6 @@ public class InventoryManager : MonoBehaviour
     public void AddItem(Item item, int quantity = 1)
     {
         if (item == null || quantity <= 0) return;
-
-        // Fire the global event for the quest system *before* modifying the inventory.
         GameEvents.ReportItemCollected(item.name);
 
         if (item.isStackable)
@@ -131,15 +97,26 @@ public class InventoryManager : MonoBehaviour
                 return;
             }
         }
-
         inventory.Add(new InventorySlot(item, quantity));
         OnInventoryChanged?.Invoke();
     }
 
-    /// <summary>
-    /// Gets the total quantity of a specific item in the inventory.
-    /// This is the new method the quest system needs.
-    /// </summary>
+    public void RemoveItem(Item item, int quantity = 1)
+    {
+        if (item == null || quantity <= 0) return;
+
+        InventorySlot slotToRemoveFrom = inventory.FirstOrDefault(slot => slot.item == item);
+        if (slotToRemoveFrom != null)
+        {
+            slotToRemoveFrom.RemoveQuantity(quantity);
+            if (slotToRemoveFrom.quantity <= 0)
+            {
+                inventory.Remove(slotToRemoveFrom);
+            }
+            OnInventoryChanged?.Invoke();
+        }
+    }
+
     public int GetItemQuantity(string itemName)
     {
         int totalQuantity = 0;

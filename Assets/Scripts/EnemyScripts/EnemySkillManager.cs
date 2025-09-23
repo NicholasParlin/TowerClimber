@@ -1,37 +1,34 @@
 using UnityEngine;
 using System.Collections.Generic;
+using System.Linq; // Required for .ToList()
 
-// This component is specific to AI-controlled enemies and handles their skill usage.
-// It is a self-contained system and does not rely on archetypes for sorting.
-public class EnemySkillManager : MonoBehaviour
+// REFACTORED to inherit from SkillManagerBase for consistency and code reuse.
+public class EnemySkillManager : SkillManagerBase
 {
     [Header("Enemy Skill Configuration")]
     [Tooltip("Assign the Skill Set ScriptableObject that defines this enemy's abilities.")]
     [SerializeField] private EnemySkillSet skillSet;
 
-    // A simple list to hold all skills this enemy knows.
-    private List<Skill> _learnedSkills = new List<Skill>();
+    // A reference to the player's GameObject to use as a target.
+    private GameObject _playerTarget;
 
-    // Dictionaries to track cooldowns and activation times.
-    private Dictionary<Skill, float> _skillCooldowns = new Dictionary<Skill, float>();
-    private bool _isActivating;
-    private float _currentActivationTime;
-
-    // Reference to this enemy's stats.
-    private CharacterStatsBase _stats;
-
-    private void Awake()
+    // This overrides the base Awake method but also calls it.
+    protected override void Awake()
     {
-        _stats = GetComponent<CharacterStatsBase>();
+        base.Awake(); // This calls the Awake() method in SkillManagerBase
 
-        // Learn all skills from the assigned skill set and populate the simple list.
+        // Find and store a reference to the player.
+        _playerTarget = GameObject.FindGameObjectWithTag("Player");
+
+        // Learn all skills from the assigned skill set.
         if (skillSet != null)
         {
             foreach (Skill skill in skillSet.skills)
             {
                 if (skill != null)
                 {
-                    _learnedSkills.Add(skill);
+                    // Using the base class's method to learn skills.
+                    LearnNewSkill(skill);
                 }
             }
         }
@@ -41,26 +38,11 @@ public class EnemySkillManager : MonoBehaviour
         }
     }
 
-    private void Update()
+    // This overrides the base Update method but also calls it.
+    protected override void Update()
     {
-        HandleCooldowns();
-        HandleActivationLock();
+        base.Update(); // This handles cooldowns and activation locks automatically.
         SimpleAIUpdate();
-    }
-
-    /// <summary>
-    /// Public method that can be called by an external AI controller to use a specific skill.
-    /// </summary>
-    public void UseSkill(Skill skill)
-    {
-        if (_learnedSkills.Contains(skill))
-        {
-            TryToUseSkill(skill);
-        }
-        else
-        {
-            Debug.LogWarning($"{gameObject.name} tried to use a skill it does not know: {skill.skillName}");
-        }
     }
 
     /// <summary>
@@ -68,89 +50,25 @@ public class EnemySkillManager : MonoBehaviour
     /// </summary>
     private void SimpleAIUpdate()
     {
-        // In a real game, this logic would be in a dedicated AI Controller script.
-        // This is just for demonstration.
-        if (_learnedSkills.Count == 0) return;
+        // Don't do anything if there are no learned skills or no target.
+        if (learnedSkills.Count == 0 || _playerTarget == null) return;
 
         // Simple timer logic
         if (Time.time > _nextSkillCheckTime)
         {
-            // Pick a random learned skill and try to use it.
-            int randomIndex = Random.Range(0, _learnedSkills.Count);
-            Skill randomSkill = _learnedSkills[randomIndex];
-            TryToUseSkill(randomSkill);
+            // --- CORRECTED LOGIC ---
+            // 1. Get all the lists of skills from the dictionary.
+            List<List<Skill>> allSkillLists = learnedSkills.Values.ToList();
+            // 2. Pick a random list.
+            List<Skill> randomSkillList = allSkillLists[Random.Range(0, allSkillLists.Count)];
+            // 3. Pick a random skill from that list.
+            Skill randomSkill = randomSkillList[Random.Range(0, randomSkillList.Count)];
 
-            // Set the next time the AI will check to use a skill.
+            // We now use the TryToUseSkill method inherited from the base class, passing the player as the target.
+            TryToUseSkill(randomSkill, _playerTarget);
+
             _nextSkillCheckTime = Time.time + 2.0f;
         }
     }
-    private float _nextSkillCheckTime; // Helper variable for the simple AI.
-
-
-    // --- Core Skill Logic (Simplified from SkillManagerBase) ---
-
-    private void TryToUseSkill(Skill skill)
-    {
-        if (_isActivating || _skillCooldowns.ContainsKey(skill) || !HasEnoughResources(skill))
-        {
-            return; // Cannot use skill.
-        }
-
-        SpendResources(skill);
-        skill.Activate(gameObject);
-        _isActivating = true;
-        _currentActivationTime = skill.activationTime;
-
-        if (skill.cooldown > 0)
-        {
-            _skillCooldowns[skill] = skill.cooldown;
-        }
-    }
-
-    private bool HasEnoughResources(Skill skill)
-    {
-        return _stats.currentMana >= skill.manaCost &&
-               _stats.currentEnergy >= skill.energyCost &&
-               _stats.currentHealth > skill.healthCost &&
-               _stats.currentAnguish >= skill.anguishCost;
-    }
-
-    private void SpendResources(Skill skill)
-    {
-        _stats.SpendMana(skill.manaCost);
-        _stats.SpendEnergy(skill.energyCost);
-        _stats.TakeDamage(skill.healthCost);
-        _stats.SpendAnguish(skill.anguishCost);
-    }
-
-    private void HandleCooldowns()
-    {
-        if (_skillCooldowns.Count == 0) return;
-
-        List<Skill> skillsToRemove = new List<Skill>();
-        foreach (var entry in _skillCooldowns)
-        {
-            _skillCooldowns[entry.Key] -= Time.deltaTime;
-            if (_skillCooldowns[entry.Key] <= 0)
-            {
-                skillsToRemove.Add(entry.Key);
-            }
-        }
-        foreach (var skill in skillsToRemove)
-        {
-            _skillCooldowns.Remove(skill);
-        }
-    }
-
-    private void HandleActivationLock()
-    {
-        if (_isActivating)
-        {
-            _currentActivationTime -= Time.deltaTime;
-            if (_currentActivationTime <= 0)
-            {
-                _isActivating = false;
-            }
-        }
-    }
+    private float _nextSkillCheckTime;
 }

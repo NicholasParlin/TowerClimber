@@ -1,11 +1,11 @@
 using UnityEngine;
 
 // This is the base interaction controller for all non-hostile NPCs.
-// It now implements the IInteractable interface and can trigger dialogues.
+// It now implements the IInteractable interface and can trigger dialogues or shops.
 public class NPCController : MonoBehaviour, IInteractable
 {
     [Header("NPC Configuration")]
-    [Tooltip("Assign a Dialogue asset here to make this NPC start a conversation on interact.")]
+    [Tooltip("Assign a Dialogue asset here for this NPC's main conversation.")]
     [SerializeField] private Dialogue dialogue;
 
     // --- IInteractable Implementation ---
@@ -13,37 +13,55 @@ public class NPCController : MonoBehaviour, IInteractable
 
     /// <summary>
     /// This is the method that will be called when the player interacts with this NPC.
-    /// It decides what to do based on the other components attached to this NPC.
+    /// It decides what to do based on the other components attached.
     /// </summary>
     public void Interact()
     {
-        // Prioritize starting a dialogue if one is assigned.
+        // Interaction priority: Shop > Dialogue > Quest > Default.
+
+        // 1. If this NPC is a shopkeeper, open the shop.
+        if (_shopkeeper != null)
+        {
+            _shopkeeper.OpenShop();
+            return;
+        }
+
+        // 2. If they have a dialogue, start the conversation.
         if (dialogue != null)
         {
             DialogueManager.Instance.StartDialogue(dialogue);
-            return; // Return to prevent other interactions from happening at the same time.
+            return;
         }
 
-        // If no dialogue, fall back to quest interaction.
+        // 3. If they are a quest giver, interact with the quest system.
         if (_questGiver != null)
         {
             _questGiver.Interact();
             return;
         }
 
-        // If no other components are found, just have a default debug message.
+        // Default interaction if no other components are found.
         Debug.Log($"Hello, my name is {gameObject.name}.");
     }
 
-    // --- Original Logic ---
+    // --- Component References ---
     private QuestGiver _questGiver;
+    private Shopkeeper _shopkeeper;
 
     private void Awake()
     {
-        // Get references to any interaction components on this NPC.
+        // Get references to any potential interaction components on this NPC.
         _questGiver = GetComponent<QuestGiver>();
+        _shopkeeper = GetComponent<Shopkeeper>();
 
-        // Set the initial interaction prompt.
-        InteractionPrompt = $"Talk to {gameObject.name}";
+        // Update the interaction prompt based on the NPC's primary function.
+        if (_shopkeeper != null)
+        {
+            InteractionPrompt = $"Trade with {gameObject.name}";
+        }
+        else
+        {
+            InteractionPrompt = $"Talk to {gameObject.name}";
+        }
     }
 }

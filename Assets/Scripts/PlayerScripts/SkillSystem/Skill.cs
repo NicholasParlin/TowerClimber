@@ -1,8 +1,16 @@
 using UnityEngine;
+using System.Collections;
+using System.Collections.Generic;
 
-// This is the abstract base class for all skills. We will create specific skill types
-// that inherit from this.
-public abstract class Skill : ScriptableObject
+[System.Serializable]
+public class EffectInSequence
+{
+    public GameplayEffect effect;
+    [Tooltip("The delay in seconds AFTER this effect executes.")]
+    public float delayAfterEffect = 0f;
+}
+
+public class Skill : ScriptableObject
 {
     [Header("Core Information")]
     public string skillName;
@@ -12,15 +20,14 @@ public abstract class Skill : ScriptableObject
     public Archetype archetype;
 
     [Header("Skill Type")]
-    [Tooltip("Check this if the skill is a toggleable passive. Otherwise, it's considered an active skill.")]
-    public bool isPassive;
+    [Tooltip("If this is a passive skill, assign the permanent Status Effect it applies here.")]
+    public StatusEffect passiveEffectToApply;
+    [Tooltip("If checked, this skill will always target the caster.")]
+    public bool isSelfCast = false;
 
     [Header("Mechanics")]
-    public float activationTime = 0.5f;
+    public float baseActivationTime = 0.5f;
     public float cooldown = 1f;
-
-    [Tooltip("If this skill fires a projectile, assign its prefab here.")]
-    public GameObject projectilePrefab;
 
     [Header("Resource Costs")]
     public float manaCost = 0;
@@ -28,7 +35,25 @@ public abstract class Skill : ScriptableObject
     public float healthCost = 0;
     public float anguishCost = 0;
 
-    // This method defines what happens when the skill is used.
-    // It must be implemented by any class that inherits from this one.
-    public abstract void Activate(GameObject user);
+    [Header("Gameplay Effects (for Active Skills)")]
+    public List<EffectInSequence> effectSequence;
+
+    public IEnumerator Activate(SkillManagerBase skillManager, GameObject caster, GameObject target)
+    {
+        foreach (EffectInSequence sequenceItem in effectSequence)
+        {
+            if (sequenceItem.effect != null)
+            {
+                // CORRECTED: Now passes 'this' as the sourceSkill.
+                sequenceItem.effect.Execute(this, caster, target);
+            }
+
+            if (sequenceItem.delayAfterEffect > 0)
+            {
+                yield return new WaitForSeconds(sequenceItem.delayAfterEffect);
+            }
+        }
+
+        skillManager.ApplyCooldown(this);
+    }
 }

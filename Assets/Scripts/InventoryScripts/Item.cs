@@ -1,6 +1,5 @@
 using UnityEngine;
 
-// An enum to define the different types of items for easy sorting.
 public enum ItemType
 {
     Consumable,
@@ -9,8 +8,7 @@ public enum ItemType
     Default
 }
 
-// This is the abstract base class for all items. We will create specific item types
-// that inherit from this.
+// The Item class is now a pure data container and no longer implements IVirtualizationData.
 public abstract class Item : ScriptableObject
 {
     [Header("Item Information")]
@@ -22,11 +20,12 @@ public abstract class Item : ScriptableObject
     public bool isStackable = true;
     public int maxStackSize = 99;
 
-    // This method defines what happens when the item is used from the inventory.
-    // It is 'virtual' so that specific item types can override it with their own logic.
+    [Header("Item Economy")]
+    public int buyPrice = 10;
+    public int sellPrice = 5;
+
     public virtual void Use()
     {
-        // Default behavior is to do nothing.
         Debug.Log($"Using {itemName}.");
     }
 }

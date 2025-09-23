@@ -1,7 +1,6 @@
 using UnityEngine;
+using System.Collections.Generic;
 
-// This is the universal base class for all characters, both player and enemies.
-// It holds all the core stats and resources.
 public class CharacterStatsBase : MonoBehaviour
 {
     [Header("Primary Stats")]
@@ -13,15 +12,39 @@ public class CharacterStatsBase : MonoBehaviour
     public Stat Endurance;
     public Stat Sense;
 
-    [Header("Combat Stats")]
+    [Header("Defensive Stats")]
     public Stat Armor;
     public Stat MagicResistance;
+    [Tooltip("Resistance to being interrupted. Checked against incoming stagger power.")]
+    public Stat Poise;
+    [Tooltip("If an incoming stagger attack's power is at or above this value, the character is knocked down.")]
+    public Stat StaggerDamageThreshold;
+
+    [Header("Specific Resistances")]
+    public Stat FireResistance;
+    public Stat WaterResistance;
+    public Stat NatureResistance;
+    public Stat HexResistance;
+    public Stat NecroResistance;
+    public Stat WindResistance;
+    public Stat LightningResistance;
+
+    [Header("Regeneration Stats")]
+    public Stat HealthRegen;
+    public Stat ManaRegen;
+    public Stat EnergyRegen;
+    public Stat StaggerRegen;
+
+    [Header("Combat Stats")]
     public Stat AttackSpeed;
     public Stat MovementSpeed;
+    [Tooltip("The multiplier for critical hit damage. Base value is 1.5 for 150% damage.")]
+    public Stat CriticalDamage;
+
+    private List<Stat> _allStats;
 
     [Header("Primary Resources")]
     public float maxHealth = 100;
-    // The 'set' accessor is 'protected' to allow child classes like PlayerStats to modify it.
     public float currentHealth { get; protected set; }
     public float maxMana = 50;
     public float currentMana { get; protected set; }
@@ -31,74 +54,220 @@ public class CharacterStatsBase : MonoBehaviour
     [Header("Special Resources")]
     public float maxAnguish = 100;
     public float currentAnguish { get; protected set; }
+    [Tooltip("The base stagger value before stat modifications.")]
+    public float baseMaxStagger = 100f;
+    public float maxStagger { get; protected set; }
+    public float currentStagger { get; protected set; }
+
+    private CharacterStateManager _stateManager;
 
     protected virtual void Awake()
     {
-        // Set resources to full on awake. The Save/Load system will override this if a save exists.
+        _stateManager = GetComponent<CharacterStateManager>();
+        InitializeStatList();
+        SubscribeToStatChanges();
+        RecalculateAllDerivedStats();
         RestoreAllResources();
     }
 
-    /// <summary>
-    /// Sets all current resources to their maximum values.
-    /// </summary>
+    protected virtual void OnDestroy()
+    {
+        UnsubscribeFromStatChanges();
+    }
+
+    protected virtual void Update()
+    {
+        HandleRegeneration();
+    }
+
+    private void SubscribeToStatChanges()
+    {
+        Vitality.OnValueChanged += RecalculateArmor;
+        Vitality.OnValueChanged += RecalculateMaxHealth;
+        Vitality.OnValueChanged += RecalculateMaxStagger;
+        Endurance.OnValueChanged += RecalculateMaxStagger;
+        Endurance.OnValueChanged += RecalculateMaxEnergy;
+        Endurance.OnValueChanged += RecalculateStaggerThreshold;
+        Wisdom.OnValueChanged += RecalculateMaxMana;
+    }
+
+    private void UnsubscribeFromStatChanges()
+    {
+        Vitality.OnValueChanged -= RecalculateArmor;
+        Vitality.OnValueChanged -= RecalculateMaxHealth;
+        Vitality.OnValueChanged -= RecalculateMaxStagger;
+        Endurance.OnValueChanged -= RecalculateMaxStagger;
+        Endurance.OnValueChanged -= RecalculateMaxEnergy;
+        Endurance.OnValueChanged -= RecalculateStaggerThreshold;
+        Wisdom.OnValueChanged -= RecalculateMaxMana;
+    }
+
+    private void RecalculateArmor() { Armor.BaseValue = Vitality.Value * 0.10f; }
+    private void RecalculateStaggerThreshold() { StaggerDamageThreshold.BaseValue = Endurance.Value * 1.0f; }
+    private void RecalculateMaxStagger()
+    {
+        float vitalityBonus = Vitality.Value * 0.05f;
+        float enduranceBonus = Endurance.Value * 0.10f;
+        maxStagger = baseMaxStagger * (1 + vitalityBonus + enduranceBonus);
+    }
+
+    private void RecalculateMaxHealth()
+    {
+        float oldMaxHealth = maxHealth;
+        maxHealth = Vitality.Value * 5;
+        currentHealth += maxHealth - oldMaxHealth;
+    }
+
+    private void RecalculateMaxMana()
+    {
+        float oldMaxMana = maxMana;
+        maxMana = Wisdom.Value * 5;
+        currentMana += maxMana - oldMaxMana;
+    }
+
+    private void RecalculateMaxEnergy()
+    {
+        float oldMaxEnergy = maxEnergy;
+        maxEnergy = Endurance.Value * 5;
+        currentEnergy += maxEnergy - oldMaxEnergy;
+    }
+
+    public void RecalculateAllDerivedStats()
+    {
+        RecalculateArmor();
+        RecalculateStaggerThreshold();
+        RecalculateMaxStagger();
+        RecalculateMaxHealth();
+        RecalculateMaxMana();
+        RecalculateMaxEnergy();
+    }
+
+    private void InitializeStatList()
+    {
+        _allStats = new List<Stat>
+        {
+            Strength, Dexterity, Vitality, Intelligence, Wisdom, Endurance, Sense,
+            Armor, MagicResistance, Poise, StaggerDamageThreshold,
+            FireResistance, WaterResistance, NatureResistance, HexResistance, NecroResistance, WindResistance, LightningResistance,
+            HealthRegen, ManaRegen, EnergyRegen, StaggerRegen,
+            AttackSpeed, MovementSpeed, CriticalDamage
+        };
+    }
+
+    public Stat GetStat(StatType type)
+    {
+        switch (type)
+        {
+            case StatType.Strength: return Strength;
+            case StatType.Dexterity: return Dexterity;
+            case StatType.Vitality: return Vitality;
+            case StatType.Intelligence: return Intelligence;
+            case StatType.Wisdom: return Wisdom;
+            case StatType.Endurance: return Endurance;
+            case StatType.Sense: return Sense;
+            default: return null;
+        }
+    }
+
+    public void RemoveAllModifiersFromSource(object source)
+    {
+        foreach (var stat in _allStats)
+        {
+            stat.RemoveAllModifiersFromSource(source);
+        }
+    }
+
+    private void HandleRegeneration()
+    {
+        if (HealthRegen.Value > 0 && currentHealth < maxHealth)
+        {
+            currentHealth += HealthRegen.Value * Time.deltaTime;
+            if (currentHealth > maxHealth) currentHealth = maxHealth;
+        }
+        if (ManaRegen.Value > 0 && currentMana < maxMana)
+        {
+            currentMana += ManaRegen.Value * Time.deltaTime;
+            if (currentMana > maxMana) currentMana = maxMana;
+        }
+        if (EnergyRegen.Value > 0 && currentEnergy < maxEnergy)
+        {
+            currentEnergy += EnergyRegen.Value * Time.deltaTime;
+            if (currentEnergy > maxEnergy) currentEnergy = maxEnergy;
+        }
+        if (StaggerRegen.Value > 0 && currentStagger < maxStagger)
+        {
+            currentStagger += StaggerRegen.Value * Time.deltaTime;
+            if (currentStagger > maxStagger) currentStagger = maxStagger;
+        }
+    }
+
     public void RestoreAllResources()
     {
         currentHealth = maxHealth;
         currentMana = maxMana;
         currentEnergy = maxEnergy;
+        currentStagger = maxStagger;
     }
 
-    /// <summary>
-    /// Recalculates the maximum value of primary resources based on core stats.
-    /// </summary>
+    public void RestoreStagger()
+    {
+        currentStagger = maxStagger;
+    }
+
     public void CalculateMaxResources()
     {
-        maxHealth = 25 + (Vitality.Value * 5);   // Example formula
-        maxMana = 25 + (Wisdom.Value * 5);     // Example formula
-        maxEnergy = 25 + (Endurance.Value * 5); // Example formula
+        maxHealth = (Vitality.Value * 5);
+        maxMana = (Wisdom.Value * 5);
+        maxEnergy = (Endurance.Value * 5);
     }
 
-    // --- Resource Management ---
-
-    /// <summary>
-    /// Reduces current health by a specified amount.
-    /// </summary>
     public virtual void TakeDamage(float damage)
     {
         currentHealth -= damage;
         if (currentHealth < 0) currentHealth = 0;
     }
 
-    /// <summary>
-    /// Reduces current mana by a specified amount.
-    /// </summary>
+    public void TakeStaggerDamage(float staggerPower)
+    {
+        if (staggerPower <= 0) return;
+        currentStagger -= staggerPower;
+        Debug.Log($"{gameObject.name} took {staggerPower} stagger damage. Current stagger: {currentStagger}");
+
+        if (currentStagger <= 0)
+        {
+            if (_stateManager != null)
+            {
+                if (staggerPower >= StaggerDamageThreshold.Value)
+                {
+                    _stateManager.ChangeState(CharacterState.KnockedDown);
+                }
+                else
+                {
+                    _stateManager.ChangeState(CharacterState.Staggered);
+                }
+            }
+            RestoreStagger();
+        }
+    }
+
     public void SpendMana(float amount)
     {
         currentMana -= amount;
         if (currentMana < 0) currentMana = 0;
     }
 
-    /// <summary>
-    /// Reduces current energy by a specified amount.
-    /// </summary>
     public void SpendEnergy(float amount)
     {
         currentEnergy -= amount;
         if (currentEnergy < 0) currentEnergy = 0;
     }
 
-    /// <summary>
-    /// Increases current anguish by a specified amount, capped at the maximum.
-    /// </summary>
     public void GainAnguish(float amount)
     {
         currentAnguish += amount;
         if (currentAnguish > maxAnguish) currentAnguish = maxAnguish;
     }
 
-    /// <summary>
-    /// Reduces current anguish by a specified amount.
-    /// </summary>
     public void SpendAnguish(float amount)
     {
         currentAnguish -= amount;

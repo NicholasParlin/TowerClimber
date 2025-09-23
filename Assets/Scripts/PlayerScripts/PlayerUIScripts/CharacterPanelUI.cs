@@ -2,9 +2,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using System.Collections.Generic;
 using System.Linq;
-// using TMPro; // Uncomment if you use TextMeshPro and change Dropdown/Text references
 
-// This is the master script for the main character panel, which shows stats, skills, and titles.
 public class CharacterPanelUI : MonoBehaviour
 {
     [Header("Player References")]
@@ -20,19 +18,13 @@ public class CharacterPanelUI : MonoBehaviour
     [SerializeField] private Button strengthButton, dexterityButton, vitalityButton, intelligenceButton, wisdomButton, enduranceButton, senseButton;
     [SerializeField] private Text strengthText, dexterityText, vitalityText, intelligenceText, wisdomText, enduranceText, senseText;
 
-    [Header("Skill Lists (Assign Scroll View Content)")]
-    [Tooltip("The parent object where active skill prefabs will be instantiated.")]
-    [SerializeField] private Transform activeSkillsContentArea;
-    [Tooltip("The parent object where passive skill prefabs will be instantiated.")]
-    [SerializeField] private Transform passiveSkillsContentArea;
+    [Header("Skill Lists (Virtualized)")]
+    [SerializeField] private VirtualizedScrollView activeSkillsScrollView;
+    [SerializeField] private VirtualizedScrollView passiveSkillsScrollView;
 
     [Header("Title Dropdown")]
     [SerializeField] private Dropdown titleDropdown;
     [SerializeField] private Text titleDescriptionText;
-
-    // Lists to keep track of the active UI objects from the pool.
-    private List<GameObject> _activeSkillListingObjects = new List<GameObject>();
-    private List<GameObject> _passiveSkillListingObjects = new List<GameObject>();
 
     private void Start()
     {
@@ -42,12 +34,14 @@ public class CharacterPanelUI : MonoBehaviour
             return;
         }
 
-        // Subscribe to events so the UI automatically refreshes when stats or titles change.
         playerStats.OnStatsUpdated += UpdateStatPanel;
         titleManager.OnEquippedTitleChanged += UpdateTitleDropdown;
-
-        // Add a listener for when the user changes the dropdown selection.
         titleDropdown.onValueChanged.AddListener(OnTitleSelectionChanged);
+
+        if (passiveSkillsScrollView != null)
+        {
+            passiveSkillsScrollView.OnItemCreated += OnPassiveSkillListingCreated;
+        }
 
         characterPanel.SetActive(false);
         UpdateStatPanel();
@@ -57,6 +51,11 @@ public class CharacterPanelUI : MonoBehaviour
     {
         if (playerStats != null) playerStats.OnStatsUpdated -= UpdateStatPanel;
         if (titleManager != null) titleManager.OnEquippedTitleChanged -= UpdateTitleDropdown;
+
+        if (passiveSkillsScrollView != null)
+        {
+            passiveSkillsScrollView.OnItemCreated -= OnPassiveSkillListingCreated;
+        }
     }
 
     public void Toggle()
@@ -98,43 +97,68 @@ public class CharacterPanelUI : MonoBehaviour
 
     private void UpdateSkillPanel()
     {
-        // Return all existing UI objects to the pool.
-        foreach (var skillObject in _activeSkillListingObjects) { ObjectPooler.Instance.ReturnToPool("SkillListing", skillObject); }
-        foreach (var skillObject in _passiveSkillListingObjects) { ObjectPooler.Instance.ReturnToPool("SkillListing", skillObject); }
-        _activeSkillListingObjects.Clear();
-        _passiveSkillListingObjects.Clear();
-
         if (playerSkillManager.learnedSkills == null) return;
 
-        // Get new UI objects from the pool for each learned skill.
+        List<object> activeSkillsData = new List<object>();
+        List<object> passiveSkillsData = new List<object>();
+
         foreach (var skillList in playerSkillManager.learnedSkills.Values)
         {
             foreach (var skill in skillList)
             {
-                GameObject skillGO = ObjectPooler.Instance.GetFromPool("SkillListing", Vector3.zero, Quaternion.identity);
-                if (skillGO == null) continue;
-
-                var skillUI = skillGO.GetComponent<SkillListingUI>();
-
-                if (skill.isPassive)
+                if (skill.passiveEffectToApply != null)
                 {
-                    skillGO.transform.SetParent(passiveSkillsContentArea, false);
-                    skillUI.SetupPassive(skill, playerSkillManager);
-                    _passiveSkillListingObjects.Add(skillGO);
+                    passiveSkillsData.Add(skill);
                 }
                 else
                 {
-                    skillGO.transform.SetParent(activeSkillsContentArea, false);
-                    skillUI.SetupActive(skill);
-                    _activeSkillListingObjects.Add(skillGO);
+                    activeSkillsData.Add(skill);
                 }
             }
+        }
+
+        System.Action<GameObject, object> setupSkillUI = (uiObject, data) =>
+        {
+            SkillListingUI skillUI = uiObject.GetComponent<SkillListingUI>();
+            Skill skillData = data as Skill;
+            if (skillUI != null && skillData != null)
+            {
+                bool isPassiveActive = playerSkillManager.IsPassiveActive(skillData);
+                skillUI.DisplaySkill(skillData, isPassiveActive);
+            }
+        };
+
+        if (activeSkillsScrollView != null)
+        {
+            activeSkillsScrollView.Initialize(activeSkillsData, setupSkillUI);
+        }
+        if (passiveSkillsScrollView != null)
+        {
+            passiveSkillsScrollView.Initialize(passiveSkillsData, setupSkillUI);
+        }
+    }
+
+    private void OnPassiveSkillListingCreated(GameObject itemObject)
+    {
+        SkillListingUI skillUI = itemObject.GetComponent<SkillListingUI>();
+        if (skillUI != null)
+        {
+            skillUI.OnPassiveToggled += OnPassiveSkillToggled;
+        }
+    }
+
+    private void OnPassiveSkillToggled(Skill skill)
+    {
+        if (playerSkillManager != null)
+        {
+            playerSkillManager.TogglePassive(skill);
+            UpdateSkillPanel();
         }
     }
 
     private void UpdateTitleDropdown()
     {
-        titleDropdown.onValueChanged.RemoveListener(OnTitleSelectionChanged); // Prevent firing event during refresh
+        titleDropdown.onValueChanged.RemoveListener(OnTitleSelectionChanged);
 
         titleDropdown.ClearOptions();
         List<string> titleNames = titleManager.GetUnlockedTitles().Select(t => t.titleName).ToList();
@@ -156,8 +180,7 @@ public class CharacterPanelUI : MonoBehaviour
         }
 
         UpdateTitleDescription();
-
-        titleDropdown.onValueChanged.AddListener(OnTitleSelectionChanged); // Re-add listener
+        titleDropdown.onValueChanged.AddListener(OnTitleSelectionChanged);
     }
 
     private void OnTitleSelectionChanged(int index)

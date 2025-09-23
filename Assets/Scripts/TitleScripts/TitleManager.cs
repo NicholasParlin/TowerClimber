@@ -6,7 +6,6 @@ using System.Linq;
 [RequireComponent(typeof(BuffManager), typeof(PlayerStats))]
 public class TitleManager : MonoBehaviour
 {
-    // This event fires whenever the equipped title changes, allowing the UI to react.
     public event Action OnEquippedTitleChanged;
 
     private List<Title> _unlockedTitles = new List<Title>();
@@ -59,9 +58,6 @@ public class TitleManager : MonoBehaviour
 
     public List<Title> GetUnlockedTitles() => _unlockedTitles;
 
-    /// <summary>
-    /// Public method for the UI to check if a specific title is the currently equipped one.
-    /// </summary>
     public bool IsTitleEquipped(Title title) => title != null && _equippedTitle == title;
 
     public void UnlockTitle(Title titleToUnlock)
@@ -75,7 +71,7 @@ public class TitleManager : MonoBehaviour
     public void EquipTitle(Title newTitle)
     {
         if (newTitle == null || !_unlockedTitles.Contains(newTitle)) return;
-        if (_equippedTitle == newTitle) return; // Don't do anything if we're re-equipping the same title.
+        if (_equippedTitle == newTitle) return;
 
         UnequipCurrentTitle();
 
@@ -85,11 +81,12 @@ public class TitleManager : MonoBehaviour
             Stat targetStat = _playerStats.GetStat(bonus.statToBuff);
             if (targetStat != null)
             {
-                var modifier = new StatModifier(bonus.value, -1f, _equippedTitle);
+                // CONSTRUCTOR UPDATED TO NEW 3-ARGUMENT VERSION
+                var modifier = new StatModifier(bonus.value, bonus.type, _equippedTitle);
                 _buffManager.AddModifier(targetStat, modifier);
             }
         }
-        OnEquippedTitleChanged?.Invoke(); // Fire the event to update the UI.
+        OnEquippedTitleChanged?.Invoke();
     }
 
     public void UnequipCurrentTitle()
@@ -97,6 +94,6 @@ public class TitleManager : MonoBehaviour
         if (_equippedTitle == null) return;
         _buffManager.RemoveAllModifiersFromSource(_equippedTitle);
         _equippedTitle = null;
-        OnEquippedTitleChanged?.Invoke(); // Fire the event to update the UI.
+        OnEquippedTitleChanged?.Invoke();
     }
 }

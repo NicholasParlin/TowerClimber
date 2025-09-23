@@ -13,9 +13,12 @@ public class GameManager : MonoBehaviour
     [Tooltip("Assign the player's GameObject here in the Inspector.")]
     [SerializeField] private PlayerStats playerStats;
 
+    [Header("Game Balance Settings")]
+    [Tooltip("The multiplier for how effective Dexterity and Sense are at reducing enemy speed. Default: 1.5")]
+    [SerializeField] private float defenseMultiplier = 1.5f;
+
     // --- Enemy Game Speed Calculation ---
     private float _baseEnemySpeedPerFloor = 0.10f; // 10% speed increase per floor
-    private float _spikeFloorSpeedBonus = 0.10f;  // Additional 10% (for 20% total) on spike floors
     private float _cachedEnemyGameSpeed = 1.0f;   // The final, calculated speed multiplier that enemies will use.
 
     private void Awake()
@@ -38,25 +41,28 @@ public class GameManager : MonoBehaviour
         // This is the core of our efficient, event-driven system.
         if (playerStats != null)
         {
-            playerStats.OnCoreStatChanged += UpdateEnemySpeedCache;
+            // We now subscribe to OnStatsUpdated to catch changes in Dex OR Sense.
+            playerStats.OnStatsUpdated += UpdateEnemySpeedCache;
         }
 
         // Calculate the initial value when the game starts.
         UpdateEnemySpeedCache();
     }
 
+
+
     private void OnDestroy()
     {
         // Always unsubscribe from events when this object is destroyed to prevent errors.
         if (playerStats != null)
         {
-            playerStats.OnCoreStatChanged -= UpdateEnemySpeedCache;
+            playerStats.OnStatsUpdated -= UpdateEnemySpeedCache;
         }
     }
 
     /// <summary>
-    /// This method ONLY runs when the player's Sense stat changes (or the floor changes).
-    /// It recalculates the global enemy speed and caches it.
+    /// This method runs whenever the player's stats change or the floor changes.
+    /// It recalculates the global enemy speed using the "Power vs. Defense" formula.
     /// </summary>
     private void UpdateEnemySpeedCache()
     {
@@ -66,22 +72,22 @@ public class GameManager : MonoBehaviour
             return;
         }
 
-        // 1. Calculate the floor-based speed bonus.
-        float floorBonus = (currentFloor - 1) * _baseEnemySpeedPerFloor;
-        // Add bonus for spike floors (5, 10, 25, 50)
-        if (currentFloor == 5 || currentFloor == 10 || currentFloor == 25 || currentFloor == 50)
-        {
-            floorBonus += _spikeFloorSpeedBonus;
-        }
+        // --- NEW "Power vs. Defense" FORMULA ---
 
-        float currentEnemySpeed = 1.0f + floorBonus;
+        // 1. Calculate the base speed for the current floor.
+        float baseFloorSpeed = 1.0f + (currentFloor - 1) * _baseEnemySpeedPerFloor;
 
-        // 2. Calculate the reduction from the player's Sense stat.
-        // Each point of Sense reduces the final speed by 1%.
-        float senseModifier = playerStats.Sense.Value * 0.01f;
+        // 2. Calculate the floor's "Power".
+        float floorPower = 100f + (currentFloor - 1) * 10f;
 
-        // 3. Calculate and cache the final value.
-        float finalSpeed = currentEnemySpeed * (1 - senseModifier);
+        // 3. Calculate the player's "Defense" from stats.
+        float playerDefense = (playerStats.Dexterity.Value + playerStats.Sense.Value) * defenseMultiplier;
+
+        // 4. Calculate the final speed multiplier using the diminishing returns formula.
+        float speedMultiplier = floorPower / (floorPower + playerDefense);
+
+        // 5. Calculate and cache the final game speed.
+        float finalSpeed = baseFloorSpeed * speedMultiplier;
 
         // Clamp the speed to a minimum value to prevent enemies from stopping completely.
         _cachedEnemyGameSpeed = Mathf.Max(finalSpeed, 0.25f);
@@ -100,6 +106,7 @@ public class GameManager : MonoBehaviour
 
     /// <summary>
     /// Call this method when the player ascends to the next floor.
+    /// This can be triggered by the WorldInteractable script on a portal or staircase.
     /// </summary>
     public void GoToNextFloor()
     {
