@@ -13,7 +13,9 @@ public class ShopUI : MonoBehaviour
 
     [Header("Virtualized Lists")]
     [SerializeField] private VirtualizedScrollView shopItemsScrollView;
+    [SerializeField] private ShopItemDataAdapter shopItemAdapter; // NEW: Adapter reference
     [SerializeField] private VirtualizedScrollView playerItemsScrollView;
+    [SerializeField] private ShopItemDataAdapter playerItemAdapter; // NEW: Adapter reference
 
     private Shopkeeper _currentShopkeeper;
     private InventoryManager _playerInventory;
@@ -62,31 +64,13 @@ public class ShopUI : MonoBehaviour
     {
         if (_currentShopkeeper == null || !shopPanel.activeSelf) return;
 
-        // --- Populate Shop's Inventory ---
+        // Populate Shop's Inventory
         List<object> shopData = _currentShopkeeper.itemsForSale.Cast<object>().ToList();
-        System.Action<GameObject, object> setupShopItem = (uiObject, data) =>
-        {
-            ShopItemUI itemUI = uiObject.GetComponent<ShopItemUI>();
-            Item itemData = data as Item;
-            if (itemUI != null && itemData != null)
-            {
-                itemUI.DisplayItem(itemData, true); // true = isShopItem
-            }
-        };
-        shopItemsScrollView.Initialize(shopData, setupShopItem);
+        shopItemsScrollView.Initialize(shopData, shopItemAdapter);
 
-        // --- Populate Player's Inventory for Selling ---
+        // Populate Player's Inventory for Selling
         List<object> playerData = _playerInventory.inventory.Cast<object>().ToList();
-        System.Action<GameObject, object> setupPlayerItem = (uiObject, data) =>
-        {
-            ShopItemUI itemUI = uiObject.GetComponent<ShopItemUI>();
-            InventorySlot slotData = data as InventorySlot;
-            if (itemUI != null && slotData != null)
-            {
-                itemUI.DisplayItem(slotData.item, false); // false = isPlayerItem
-            }
-        };
-        playerItemsScrollView.Initialize(playerData, setupPlayerItem);
+        playerItemsScrollView.Initialize(playerData, playerItemAdapter);
 
         playerGoldText.text = $"Gold: {_playerInventory.currentGold}";
     }

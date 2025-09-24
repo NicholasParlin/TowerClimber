@@ -1,7 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-// An enum to define the different slots an item can be equipped to.
 public enum EquipmentSlot
 {
     Head,
@@ -15,7 +14,6 @@ public enum EquipmentSlot
     Ring
 }
 
-// This is a specialized type of Item for things that can be equipped.
 [CreateAssetMenu(fileName = "New Equipment", menuName = "Inventory/Equipment Item")]
 public class EquipmentItem : Item
 {
@@ -24,12 +22,15 @@ public class EquipmentItem : Item
     public List<StatBonus> statBonuses = new List<StatBonus>();
 
     /// <summary>
-    /// Overrides the base Use method. For equipment, "using" it means equipping it.
+    /// Overrides the base Use method. For equipment, "using" it means equipping it,
+    /// and then triggering any on-equip gameplay effects.
     /// </summary>
     public override void Use()
     {
-        base.Use();
-        // Tell the EquipmentManager to equip this item.
+        // First, tell the EquipmentManager to equip this item.
         EquipmentManager.Instance.Equip(this);
+
+        // Then, call the base Use() method, which will execute the list of effects.
+        base.Use();
     }
 }

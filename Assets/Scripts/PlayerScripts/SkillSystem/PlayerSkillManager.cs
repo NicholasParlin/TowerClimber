@@ -84,6 +84,15 @@ public class PlayerSkillManager : SkillManagerBase
         InitializeSkillCaps();
     }
 
+    private void Start()
+    {
+        // Register this manager with the SkillbarManager to create a direct link.
+        if (SkillbarManager.Instance != null)
+        {
+            SkillbarManager.Instance.RegisterPlayerSkillManager(this);
+        }
+    }
+
     private void InitializeNewCharacter()
     {
         Debug.Log("Initializing new character with starting skills.");
@@ -131,7 +140,7 @@ public class PlayerSkillManager : SkillManagerBase
             _skillsLearnedPerCategory[category] = 0;
         }
 
-        int cap = Mathf.CeilToInt(_skillCapsPerCategory[category] * 0.4f);
+        int cap = Mathf.CeilToInt(_skillsLearnedPerCategory[category] * 0.4f);
         if (_skillsLearnedPerCategory[category] >= cap)
         {
             if (_inventoryManager != null) { _inventoryManager.AddGold(currencyRewardForDuplicateSkill); }
@@ -157,20 +166,26 @@ public class PlayerSkillManager : SkillManagerBase
         if (learnedSkills.ContainsKey(archetype) && index >= 0 && index < learnedSkills[archetype].Count)
         {
             Skill skillToUse = learnedSkills[archetype][index];
-            if (skillToUse.passiveEffectToApply != null) return;
-
-            GameObject target = null;
-            if (skillToUse.isSelfCast)
-            {
-                target = this.gameObject;
-            }
-            else
-            {
-                target = _playerTargeting.GetCurrentTarget();
-            }
-
-            TryToUseSkill(skillToUse, target);
+            AttemptToUseSkillByReference(skillToUse);
         }
+    }
+
+    // NEW: A more direct method for the SkillbarManager to call.
+    public void AttemptToUseSkillByReference(Skill skillToUse)
+    {
+        if (skillToUse.passiveEffectToApply != null) return;
+
+        GameObject target = null;
+        if (skillToUse.isSelfCast)
+        {
+            target = this.gameObject;
+        }
+        else
+        {
+            target = _playerTargeting.GetCurrentTarget();
+        }
+
+        TryToUseSkill(skillToUse, target);
     }
 
     public void TogglePassive(Skill passiveSkill)
@@ -185,7 +200,6 @@ public class PlayerSkillManager : SkillManagerBase
         else
         {
             _activePassives.Add(passiveSkill);
-            // CORRECTED: Now passes the skill itself as the sourceSkill.
             _buffManager.ApplyStatusEffect(passiveSkill.passiveEffectToApply, this.gameObject, passiveSkill);
         }
     }

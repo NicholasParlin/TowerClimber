@@ -1,32 +1,31 @@
 using UnityEngine;
 using System.Collections.Generic;
 
-// This script is the central hub for ALL player inputs that are not directly related to movement.
+[RequireComponent(typeof(CharacterStateManager))] // NEW: Now requires the state manager
 public class PlayerInputManager : MonoBehaviour
 {
     [Header("Component References")]
-    [Tooltip("Assign the GameObject with the PlayerSkillManager component.")]
     [SerializeField] private PlayerSkillManager playerSkillManager;
-    [Tooltip("Assign the GameObject with the InventoryUI component.")]
     [SerializeField] private InventoryUI inventoryUI;
-    [Tooltip("Assign the GameObject with the CharacterPanelUI component.")]
     [SerializeField] private CharacterPanelUI characterPanelUI;
-    [Tooltip("Assign the GameObject with the PauseMenuUI component.")]
     [SerializeField] private PauseMenuUI pauseMenuUI;
-    [Tooltip("Assign the GameObject with the PlayerInteraction component.")]
-    [SerializeField] private PlayerInteraction playerInteraction; // New reference
+    [SerializeField] private PlayerInteraction playerInteraction;
+
+    // NEW: Reference to the state manager
+    private CharacterStateManager _stateManager;
 
     [Header("UI & Interaction Key Bindings")]
     [SerializeField] private KeyCode inventoryKey = KeyCode.I;
     [SerializeField] private KeyCode characterPanelKey = KeyCode.C;
     [SerializeField] private KeyCode pauseMenuKey = KeyCode.Escape;
-    [SerializeField] private KeyCode interactKey = KeyCode.E; // New key binding
+    [SerializeField] private KeyCode interactKey = KeyCode.E;
 
     [Header("Active Skill Bindings")]
-    [Tooltip("Set up which keys correspond to which active skills here.")]
     [SerializeField] private List<SkillBinding> activeSkillBindings = new List<SkillBinding>();
 
-    // A helper class to make binding keys to skills easy in the Inspector.
+    // State variable to control actions
+    private bool _canAct = true;
+
     [System.Serializable]
     private class SkillBinding
     {
@@ -35,22 +34,49 @@ public class PlayerInputManager : MonoBehaviour
         public int skillIndex;
     }
 
+    private void Awake()
+    {
+        // Get the state manager component.
+        _stateManager = GetComponent<CharacterStateManager>();
+    }
+
+    private void OnEnable()
+    {
+        // Subscribe to the state manager's event.
+        if (_stateManager != null)
+        {
+            _stateManager.OnStateChanged += HandleStateChanged;
+        }
+    }
+
+    private void OnDisable()
+    {
+        // Always unsubscribe from events.
+        if (_stateManager != null)
+        {
+            _stateManager.OnStateChanged -= HandleStateChanged;
+        }
+    }
+
     private void Update()
     {
-        // The pause key should always be checked, even when the game is paused.
+        // UI inputs are always checked, regardless of the player's state.
+        HandleUIPanelInput();
+
+        // The pause key should also always be checked.
         if (Input.GetKeyDown(pauseMenuKey))
         {
             if (pauseMenuUI != null) { pauseMenuUI.TogglePauseMenu(); }
         }
 
-        // Don't process any other game input if the game is paused.
-        if (PauseMenuUI.isGamePaused)
+        // Don't process any game actions if the game is paused or the player can't act.
+        if (PauseMenuUI.isGamePaused || !_canAct)
         {
             return;
         }
 
-        HandleUIPanelInput();
-        HandleInteractionInput(); // New input handler
+        // Action inputs are only checked if the player is in a state that allows them to act.
+        HandleInteractionInput();
         HandleActiveSkillInput();
     }
 
@@ -67,7 +93,6 @@ public class PlayerInputManager : MonoBehaviour
         }
     }
 
-    // This method handles the interaction key press.
     private void HandleInteractionInput()
     {
         if (Input.GetKeyDown(interactKey))
@@ -89,5 +114,14 @@ public class PlayerInputManager : MonoBehaviour
                 playerSkillManager.AttemptToUseSkill(binding.archetype, binding.skillIndex);
             }
         }
+    }
+
+    /// <summary>
+    /// This method is called by the OnStateChanged event from the state manager.
+    /// </summary>
+    private void HandleStateChanged(CharacterState newState)
+    {
+        // Use the CanAct property from the state manager to determine if action keys should be enabled.
+        _canAct = _stateManager.CanAct;
     }
 }

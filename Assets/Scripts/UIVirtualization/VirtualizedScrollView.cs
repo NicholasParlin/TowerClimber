@@ -16,8 +16,8 @@ public class VirtualizedScrollView : MonoBehaviour
     [SerializeField] private float itemHeight = 100f;
     [SerializeField] private float itemSpacing = 10f;
 
-    private List<object> _dataList; // Now a generic list of objects
-    private Action<GameObject, object> _setupFunction; // The function used to populate a UI item
+    private List<object> _dataList;
+    private IDataAdapter _adapter; // Now uses the adapter interface
     private List<GameObject> _pooledItemObjects = new List<GameObject>();
     private int _firstVisibleIndex = -1;
 
@@ -27,12 +27,12 @@ public class VirtualizedScrollView : MonoBehaviour
     }
 
     /// <summary>
-    /// Initializes the scroll view with a list of data and a function to set up the UI elements.
+    /// Initializes the scroll view with a list of data and a dedicated adapter.
     /// </summary>
-    public void Initialize(List<object> data, Action<GameObject, object> setupFunction)
+    public void Initialize(List<object> data, IDataAdapter adapter)
     {
         _dataList = data;
-        _setupFunction = setupFunction;
+        _adapter = adapter;
 
         float totalContentHeight = _dataList.Count * (itemHeight + itemSpacing);
         contentPanel.sizeDelta = new Vector2(contentPanel.sizeDelta.x, totalContentHeight);
@@ -56,7 +56,7 @@ public class VirtualizedScrollView : MonoBehaviour
 
     private void OnScroll(Vector2 scrollPosition)
     {
-        if (_dataList == null || _dataList.Count == 0 || _setupFunction == null) return;
+        if (_dataList == null || _dataList.Count == 0 || _adapter == null) return;
 
         float scrollY = 1 - scrollPosition.y;
         int newFirstVisibleIndex = Mathf.FloorToInt((contentPanel.rect.height * scrollY) / (itemHeight + itemSpacing));
@@ -77,8 +77,8 @@ public class VirtualizedScrollView : MonoBehaviour
                 RectTransform itemRect = itemObject.GetComponent<RectTransform>();
                 itemRect.anchoredPosition = new Vector2(0, -dataIndex * (itemHeight + itemSpacing));
 
-                // Use the provided setup function to populate the UI element.
-                _setupFunction(itemObject, _dataList[dataIndex]);
+                // Use the adapter to set up the UI element.
+                _adapter.Setup(itemObject, _dataList[dataIndex]);
             }
             else
             {

@@ -2,10 +2,13 @@ using System;
 using UnityEngine;
 using UnityEngine.UI;
 
+[RequireComponent(typeof(Button))]
 public class SkillListingUI : MonoBehaviour
 {
     public event Action<Skill> OnPassiveToggled;
+    public event Action<Skill> OnSkillSelected; // NEW: Event for selecting a skill
 
+    [Header("UI References")]
     [SerializeField] private Text skillNameText;
     [SerializeField] private Text skillDescriptionText;
     [SerializeField] private Button skillToggleButton;
@@ -13,6 +16,13 @@ public class SkillListingUI : MonoBehaviour
 
     private Skill _skill;
     private bool _isPassiveActive;
+    private Button _selectButton;
+
+    private void Awake()
+    {
+        _selectButton = GetComponent<Button>();
+        _selectButton.onClick.AddListener(OnSelectButtonClicked);
+    }
 
     public void DisplaySkill(Skill skill, bool isPassiveActive)
     {
@@ -34,11 +44,15 @@ public class SkillListingUI : MonoBehaviour
 
     private void OnTogglePassive()
     {
-        // Invert the active state for immediate visual feedback
         _isPassiveActive = !_isPassiveActive;
         UpdateButtonVisuals();
-        // Broadcast the event for the main panel to handle the logic
         OnPassiveToggled?.Invoke(_skill);
+    }
+
+    private void OnSelectButtonClicked()
+    {
+        // When this UI element is clicked, broadcast the skill that was selected.
+        OnSkillSelected?.Invoke(_skill);
     }
 
     private void UpdateButtonVisuals()

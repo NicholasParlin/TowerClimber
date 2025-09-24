@@ -1,8 +1,12 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 
 public abstract class SkillManagerBase : MonoBehaviour
 {
+    // NEW: An event that fires when a cooldown is successfully applied to a skill.
+    public event Action<Skill> OnCooldownApplied;
+
     public Dictionary<Archetype, List<Skill>> learnedSkills { get; protected set; } = new Dictionary<Archetype, List<Skill>>();
 
     protected Dictionary<Skill, float> skillCooldowns = new Dictionary<Skill, float>();
@@ -61,20 +65,18 @@ public abstract class SkillManagerBase : MonoBehaviour
     protected virtual void ActivateSkill(Skill skill, GameObject target)
     {
         SpendResources(skill);
-
-        // We now pass 'this' (the SkillManager) to the coroutine.
         StartCoroutine(skill.Activate(this, this.gameObject, target));
 
         _isActivating = true;
         _currentActivationTime = skill.baseActivationTime;
     }
 
-    // NEW PUBLIC METHOD: The Skill coroutine will call this when its sequence is finished.
     public void ApplyCooldown(Skill skill)
     {
         if (skill.cooldown > 0)
         {
             skillCooldowns[skill] = skill.cooldown;
+            OnCooldownApplied?.Invoke(skill); // Fire the event
         }
     }
 

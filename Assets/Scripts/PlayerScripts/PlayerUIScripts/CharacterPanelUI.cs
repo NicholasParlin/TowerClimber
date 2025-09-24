@@ -20,7 +20,9 @@ public class CharacterPanelUI : MonoBehaviour
 
     [Header("Skill Lists (Virtualized)")]
     [SerializeField] private VirtualizedScrollView activeSkillsScrollView;
+    [SerializeField] private SkillDataAdapter activeSkillAdapter;
     [SerializeField] private VirtualizedScrollView passiveSkillsScrollView;
+    [SerializeField] private SkillDataAdapter passiveSkillAdapter;
 
     [Header("Title Dropdown")]
     [SerializeField] private Dropdown titleDropdown;
@@ -117,24 +119,13 @@ public class CharacterPanelUI : MonoBehaviour
             }
         }
 
-        System.Action<GameObject, object> setupSkillUI = (uiObject, data) =>
-        {
-            SkillListingUI skillUI = uiObject.GetComponent<SkillListingUI>();
-            Skill skillData = data as Skill;
-            if (skillUI != null && skillData != null)
-            {
-                bool isPassiveActive = playerSkillManager.IsPassiveActive(skillData);
-                skillUI.DisplaySkill(skillData, isPassiveActive);
-            }
-        };
-
         if (activeSkillsScrollView != null)
         {
-            activeSkillsScrollView.Initialize(activeSkillsData, setupSkillUI);
+            activeSkillsScrollView.Initialize(activeSkillsData, activeSkillAdapter);
         }
         if (passiveSkillsScrollView != null)
         {
-            passiveSkillsScrollView.Initialize(passiveSkillsData, setupSkillUI);
+            passiveSkillsScrollView.Initialize(passiveSkillsData, passiveSkillAdapter);
         }
     }
 

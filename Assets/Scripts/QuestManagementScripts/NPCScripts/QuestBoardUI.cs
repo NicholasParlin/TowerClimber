@@ -9,6 +9,8 @@ public class QuestBoardUI : MonoBehaviour
     [SerializeField] private GameObject questBoardPanel;
     [Tooltip("The Virtualized Scroll View component that will display the quests.")]
     [SerializeField] private VirtualizedScrollView virtualizedScrollView;
+    [Tooltip("The adapter that knows how to display Quest data.")]
+    [SerializeField] private QuestDataAdapter questAdapter;
 
     private List<QuestGiver> _allQuestGivers = new List<QuestGiver>();
 
@@ -24,8 +26,6 @@ public class QuestBoardUI : MonoBehaviour
         PopulateQuestList();
     }
 
-
-
     public void CloseQuestBoard()
     {
         questBoardPanel.SetActive(false);
@@ -33,31 +33,22 @@ public class QuestBoardUI : MonoBehaviour
 
     private void PopulateQuestList()
     {
-        if (virtualizedScrollView == null) return;
+        if (virtualizedScrollView == null || questAdapter == null) return;
 
         List<object> availableQuests = new List<object>();
 
+        // Go through all known QuestGivers in the scene.
         foreach (QuestGiver giver in _allQuestGivers)
         {
             Quest questData = giver.QuestData;
+            // Add quests that are available to be started.
             if (questData != null && questData.currentState == QuestState.NotStarted)
             {
                 availableQuests.Add(questData);
             }
         }
 
-        // Define the setup function for the quest UI elements.
-        System.Action<GameObject, object> setupQuestItem = (uiObject, data) =>
-        {
-            QuestListingUI questUI = uiObject.GetComponent<QuestListingUI>();
-            Quest questData = data as Quest;
-            if (questUI != null && questData != null)
-            {
-                questUI.Setup(questData);
-            }
-        };
-
-        // Pass both the data and the setup function to the scroll view.
-        virtualizedScrollView.Initialize(availableQuests, setupQuestItem);
+        // Pass both the data and the adapter to the scroll view.
+        virtualizedScrollView.Initialize(availableQuests, questAdapter);
     }
 }

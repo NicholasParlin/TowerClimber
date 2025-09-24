@@ -7,6 +7,8 @@ public class InventoryUI : MonoBehaviour
     [Header("UI References")]
     [SerializeField] private GameObject inventoryPanel;
     [SerializeField] private VirtualizedScrollView virtualizedScrollView;
+    [Tooltip("The adapter that knows how to display InventorySlot data.")]
+    [SerializeField] private InventorySlotAdapter inventorySlotAdapter; // NEW: Adapter reference
 
     private InventoryManager _inventoryManager;
     private bool _isOpen = false;
@@ -46,18 +48,7 @@ public class InventoryUI : MonoBehaviour
 
         List<object> inventoryData = _inventoryManager.inventory.Cast<object>().ToList();
 
-        // Define the setup function for the inventory UI elements.
-        System.Action<GameObject, object> setupInventoryItem = (uiObject, data) =>
-        {
-            InventorySlotUI slotUI = uiObject.GetComponent<InventorySlotUI>();
-            InventorySlot slotData = data as InventorySlot;
-            if (slotUI != null && slotData != null)
-            {
-                slotUI.DisplayItem(slotData);
-            }
-        };
-
-        // Pass both the data and the setup function to the scroll view.
-        virtualizedScrollView.Initialize(inventoryData, setupInventoryItem);
+        // Pass the data and the dedicated adapter to the scroll view.
+        virtualizedScrollView.Initialize(inventoryData, inventorySlotAdapter);
     }
 }

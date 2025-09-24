@@ -1,8 +1,7 @@
 using UnityEngine;
 
-// This script requires a CharacterController to be attached to the same GameObject.
 [RequireComponent(typeof(CharacterController))]
-[RequireComponent(typeof(PlayerSkillManager))] // We need access to the skill manager
+[RequireComponent(typeof(CharacterStateManager))] // NEW: Now requires the state manager
 public class PlayerMovement : MonoBehaviour
 {
     [Header("Movement Settings")]
@@ -16,18 +15,16 @@ public class PlayerMovement : MonoBehaviour
 
     // Component references
     private CharacterController _controller;
-    private PlayerSkillManager _skillManager;
+    private CharacterStateManager _stateManager; // NEW: Reference to the state manager
 
     // State variable to control movement
     private bool _canMove = true;
 
     private void Awake()
     {
-        // Get the required components on this GameObject.
         _controller = GetComponent<CharacterController>();
-        _skillManager = GetComponent<PlayerSkillManager>();
+        _stateManager = GetComponent<CharacterStateManager>();
 
-        // Ensure the camera transform is assigned to prevent errors.
         if (cameraTransform == null)
         {
             cameraTransform = Camera.main.transform;
@@ -37,24 +34,27 @@ public class PlayerMovement : MonoBehaviour
 
     private void OnEnable()
     {
-        // Subscribe to the skill manager's events when this component is enabled.
-        _skillManager.OnSkillActivationStart += DisableMovement;
-        _skillManager.OnSkillActivationEnd += EnableMovement;
+        // Subscribe to the state manager's event.
+        if (_stateManager != null)
+        {
+            _stateManager.OnStateChanged += HandleStateChanged;
+        }
     }
 
     private void OnDisable()
     {
-        // Always unsubscribe from events when this component is disabled to prevent memory leaks.
-        _skillManager.OnSkillActivationStart -= DisableMovement;
-        _skillManager.OnSkillActivationEnd -= EnableMovement;
+        // Always unsubscribe from events.
+        if (_stateManager != null)
+        {
+            _stateManager.OnStateChanged -= HandleStateChanged;
+        }
     }
 
     private void Update()
     {
-        // If we can't move (e.g., during a skill animation), do nothing.
+        // If we can't move, do nothing.
         if (!_canMove)
         {
-            // Ensure the character stops moving if they are locked mid-stride.
             _controller.Move(Vector3.zero);
             return;
         }
@@ -64,37 +64,27 @@ public class PlayerMovement : MonoBehaviour
 
     private void HandleMovement()
     {
-        // Read input from the player (e.g., WASD or controller stick).
         float horizontal = Input.GetAxisRaw("Horizontal");
         float vertical = Input.GetAxisRaw("Vertical");
         Vector3 direction = new Vector3(horizontal, 0f, vertical).normalized;
 
-        // Only process movement if there is some input.
         if (direction.magnitude >= 0.1f)
         {
-            // Calculate the angle to rotate the player based on camera direction.
-            // This makes the player move relative to where the camera is looking.
             float targetAngle = Mathf.Atan2(direction.x, direction.z) * Mathf.Rad2Deg + cameraTransform.eulerAngles.y;
-            // Smoothly rotate the player towards the target angle.
             float angle = Mathf.SmoothDampAngle(transform.eulerAngles.y, targetAngle, ref _turnSmoothVelocity, turnSmoothTime);
             transform.rotation = Quaternion.Euler(0f, angle, 0f);
 
-            // Calculate the final movement vector.
             Vector3 moveDir = Quaternion.Euler(0f, targetAngle, 0f) * Vector3.forward;
-            // Apply movement using the CharacterController.
             _controller.Move(moveDir.normalized * moveSpeed * Time.deltaTime);
         }
     }
 
-    // This method is called by the OnSkillActivationStart event.
-    private void DisableMovement()
+    /// <summary>
+    /// This method is called by the OnStateChanged event from the state manager.
+    /// </summary>
+    private void HandleStateChanged(CharacterState newState)
     {
-        _canMove = false;
-    }
-
-    // This method is called by the OnSkillActivationEnd event.
-    private void EnableMovement()
-    {
-        _canMove = true;
+        // Movement is only allowed in the Idle and Moving states.
+        _canMove = (newState == CharacterState.Idle || newState == CharacterState.Moving);
     }
 }
