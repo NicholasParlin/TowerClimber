@@ -36,8 +36,17 @@ public class EnemyController : MonoBehaviour
         _enemyHealth = GetComponent<EnemyHealth>();
         _stats = GetComponent<CharacterStatsBase>();
 
-        // Find the player's transform. In a large game, a manager might provide this reference.
-        _playerTransform = GameObject.FindGameObjectWithTag("Player")?.transform;
+        // MODIFIED: Get the player's transform from the central GameManager.
+        if (GameManager.Instance != null && GameManager.Instance.PlayerStats != null)
+        {
+            _playerTransform = GameManager.Instance.PlayerStats.transform;
+        }
+        else
+        {
+            Debug.LogError("GameManager or Player not found! Enemy AI will not function.", this);
+            this.enabled = false; // Disable the AI if it can't find the player.
+        }
+
 
         // Store the initial position for patrolling.
         _startPosition = transform.position;

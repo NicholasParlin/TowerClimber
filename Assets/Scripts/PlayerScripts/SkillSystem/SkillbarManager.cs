@@ -18,14 +18,41 @@ public class SkillbarManager : MonoBehaviour
     [System.Serializable]
     public class SaveData
     {
+        // This will save the skill's asset name for each of the 9 slots.
+        // If a slot is empty, it will save an empty string.
         public List<string> assignedSkillNames;
+
         public SaveData(SkillbarManager skillbarManager)
         {
             assignedSkillNames = skillbarManager._skillSlots.Select(skill => skill != null ? skill.name : string.Empty).ToList();
         }
     }
-    public void SaveState() { /* Placeholder */ }
-    public void LoadState(SkillDatabase skillDatabase) { /* Placeholder */ }
+
+    public void SaveState()
+    {
+        // MODIFIED: This line is now active.
+        SaveSystem.SavePlayerSkillbar(this);
+    }
+
+    public void LoadState(SkillDatabase skillDatabase)
+    {
+        // MODIFIED: This entire block is now active.
+        SaveData data = SaveSystem.LoadPlayerSkillbar();
+        if (data == null || skillDatabase == null) return;
+
+        for (int i = 0; i < data.assignedSkillNames.Count && i < _skillSlots.Length; i++)
+        {
+            if (!string.IsNullOrEmpty(data.assignedSkillNames[i]))
+            {
+                Skill skill = skillDatabase.GetSkillByName(data.assignedSkillNames[i]);
+                AssignSkillToSlot(skill, i);
+            }
+            else
+            {
+                UnassignSkillFromSlot(i);
+            }
+        }
+    }
     #endregion
 
     private void Awake()
@@ -34,7 +61,6 @@ public class SkillbarManager : MonoBehaviour
         else { Instance = this; }
     }
 
-    // NEW: A public method for the PlayerSkillManager to register itself.
     public void RegisterPlayerSkillManager(PlayerSkillManager psm)
     {
         _playerSkillManager = psm;

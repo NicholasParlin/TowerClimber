@@ -1,11 +1,9 @@
 using UnityEngine;
 using System.IO;
-using System.Runtime.Serialization.Formatters.Binary;
 
-// A static class to handle all low-level file saving and loading operations.
+// A static class to handle all low-level file saving and loading operations using JSON.
 public static class SaveSystem
 {
-    // --- NEW: Method to delete all save data ---
     public static void DeleteAllSaveData()
     {
         string[] paths = {
@@ -13,7 +11,8 @@ public static class SaveSystem
             GetSkillsSavePath(),
             GetQuestsSavePath(),
             GetInventorySavePath(),
-            GetTitlesSavePath()
+            GetTitlesSavePath(),
+            GetSkillbarSavePath() // Added skillbar path
         };
 
         foreach (string path in paths)
@@ -29,18 +28,15 @@ public static class SaveSystem
     // --- Player Stats Save/Load ---
     private static string GetStatsSavePath()
     {
-        return Path.Combine(Application.persistentDataPath, "playerStats.sav");
+        return Path.Combine(Application.persistentDataPath, "playerStats.json");
     }
 
     public static void SavePlayerStats(PlayerStats playerStats)
     {
         string path = GetStatsSavePath();
-        using (FileStream stream = new FileStream(path, FileMode.Create))
-        {
-            BinaryFormatter formatter = new BinaryFormatter();
-            PlayerStats.SaveData data = new PlayerStats.SaveData(playerStats);
-            formatter.Serialize(stream, data);
-        }
+        PlayerStats.SaveData data = new PlayerStats.SaveData(playerStats);
+        string json = JsonUtility.ToJson(data, true);
+        File.WriteAllText(path, json);
     }
 
     public static PlayerStats.SaveData LoadPlayerStats()
@@ -48,12 +44,9 @@ public static class SaveSystem
         string path = GetStatsSavePath();
         if (File.Exists(path))
         {
-            using (FileStream stream = new FileStream(path, FileMode.Open))
-            {
-                if (stream.Length == 0) return null;
-                BinaryFormatter formatter = new BinaryFormatter();
-                return formatter.Deserialize(stream) as PlayerStats.SaveData;
-            }
+            string json = File.ReadAllText(path);
+            if (string.IsNullOrEmpty(json)) return null;
+            return JsonUtility.FromJson<PlayerStats.SaveData>(json);
         }
         return null;
     }
@@ -61,18 +54,15 @@ public static class SaveSystem
     // --- Player Skills Save/Load ---
     private static string GetSkillsSavePath()
     {
-        return Path.Combine(Application.persistentDataPath, "playerSkills.sav");
+        return Path.Combine(Application.persistentDataPath, "playerSkills.json");
     }
 
     public static void SavePlayerSkills(PlayerSkillManager skillManager)
     {
         string path = GetSkillsSavePath();
-        using (FileStream stream = new FileStream(path, FileMode.Create))
-        {
-            BinaryFormatter formatter = new BinaryFormatter();
-            PlayerSkillManager.SaveData data = new PlayerSkillManager.SaveData(skillManager);
-            formatter.Serialize(stream, data);
-        }
+        PlayerSkillManager.SaveData data = new PlayerSkillManager.SaveData(skillManager);
+        string json = JsonUtility.ToJson(data, true);
+        File.WriteAllText(path, json);
     }
 
     public static PlayerSkillManager.SaveData LoadPlayerSkills()
@@ -80,12 +70,9 @@ public static class SaveSystem
         string path = GetSkillsSavePath();
         if (File.Exists(path))
         {
-            using (FileStream stream = new FileStream(path, FileMode.Open))
-            {
-                if (stream.Length == 0) return null;
-                BinaryFormatter formatter = new BinaryFormatter();
-                return formatter.Deserialize(stream) as PlayerSkillManager.SaveData;
-            }
+            string json = File.ReadAllText(path);
+            if (string.IsNullOrEmpty(json)) return null;
+            return JsonUtility.FromJson<PlayerSkillManager.SaveData>(json);
         }
         return null;
     }
@@ -93,18 +80,15 @@ public static class SaveSystem
     // --- Player Quests Save/Load ---
     private static string GetQuestsSavePath()
     {
-        return Path.Combine(Application.persistentDataPath, "playerQuests.sav");
+        return Path.Combine(Application.persistentDataPath, "playerQuests.json");
     }
 
     public static void SavePlayerQuests(QuestLog questLog)
     {
         string path = GetQuestsSavePath();
-        using (FileStream stream = new FileStream(path, FileMode.Create))
-        {
-            BinaryFormatter formatter = new BinaryFormatter();
-            QuestLog.SaveData data = new QuestLog.SaveData(questLog);
-            formatter.Serialize(stream, data);
-        }
+        QuestLog.SaveData data = new QuestLog.SaveData(questLog);
+        string json = JsonUtility.ToJson(data, true);
+        File.WriteAllText(path, json);
     }
 
     public static QuestLog.SaveData LoadPlayerQuests()
@@ -112,12 +96,9 @@ public static class SaveSystem
         string path = GetQuestsSavePath();
         if (File.Exists(path))
         {
-            using (FileStream stream = new FileStream(path, FileMode.Open))
-            {
-                if (stream.Length == 0) return null;
-                BinaryFormatter formatter = new BinaryFormatter();
-                return formatter.Deserialize(stream) as QuestLog.SaveData;
-            }
+            string json = File.ReadAllText(path);
+            if (string.IsNullOrEmpty(json)) return null;
+            return JsonUtility.FromJson<QuestLog.SaveData>(json);
         }
         return null;
     }
@@ -125,18 +106,15 @@ public static class SaveSystem
     // --- Player Inventory Save/Load ---
     private static string GetInventorySavePath()
     {
-        return Path.Combine(Application.persistentDataPath, "playerInventory.sav");
+        return Path.Combine(Application.persistentDataPath, "playerInventory.json");
     }
 
     public static void SavePlayerInventory(InventoryManager inventoryManager)
     {
         string path = GetInventorySavePath();
-        using (FileStream stream = new FileStream(path, FileMode.Create))
-        {
-            BinaryFormatter formatter = new BinaryFormatter();
-            InventoryManager.SaveData data = new InventoryManager.SaveData(inventoryManager);
-            formatter.Serialize(stream, data);
-        }
+        InventoryManager.SaveData data = new InventoryManager.SaveData(inventoryManager);
+        string json = JsonUtility.ToJson(data, true);
+        File.WriteAllText(path, json);
     }
 
     public static InventoryManager.SaveData LoadPlayerInventory()
@@ -144,32 +122,25 @@ public static class SaveSystem
         string path = GetInventorySavePath();
         if (File.Exists(path))
         {
-            using (FileStream stream = new FileStream(path, FileMode.Open))
-            {
-                if (stream.Length == 0) return null;
-                BinaryFormatter formatter = new BinaryFormatter();
-                return formatter.Deserialize(stream) as InventoryManager.SaveData;
-            }
+            string json = File.ReadAllText(path);
+            if (string.IsNullOrEmpty(json)) return null;
+            return JsonUtility.FromJson<InventoryManager.SaveData>(json);
         }
         return null;
     }
 
     // --- Player Titles Save/Load ---
-
     private static string GetTitlesSavePath()
     {
-        return Path.Combine(Application.persistentDataPath, "playerTitles.sav");
+        return Path.Combine(Application.persistentDataPath, "playerTitles.json");
     }
 
     public static void SavePlayerTitles(TitleManager titleManager)
     {
         string path = GetTitlesSavePath();
-        using (FileStream stream = new FileStream(path, FileMode.Create))
-        {
-            BinaryFormatter formatter = new BinaryFormatter();
-            TitleManager.SaveData data = new TitleManager.SaveData(titleManager);
-            formatter.Serialize(stream, data);
-        }
+        TitleManager.SaveData data = new TitleManager.SaveData(titleManager);
+        string json = JsonUtility.ToJson(data, true);
+        File.WriteAllText(path, json);
     }
 
     public static TitleManager.SaveData LoadPlayerTitles()
@@ -177,12 +148,35 @@ public static class SaveSystem
         string path = GetTitlesSavePath();
         if (File.Exists(path))
         {
-            using (FileStream stream = new FileStream(path, FileMode.Open))
-            {
-                if (stream.Length == 0) return null;
-                BinaryFormatter formatter = new BinaryFormatter();
-                return formatter.Deserialize(stream) as TitleManager.SaveData;
-            }
+            string json = File.ReadAllText(path);
+            if (string.IsNullOrEmpty(json)) return null;
+            return JsonUtility.FromJson<TitleManager.SaveData>(json);
+        }
+        return null;
+    }
+
+    // --- NEW: Player Skillbar Save/Load ---
+    private static string GetSkillbarSavePath()
+    {
+        return Path.Combine(Application.persistentDataPath, "playerSkillbar.json");
+    }
+
+    public static void SavePlayerSkillbar(SkillbarManager skillbarManager)
+    {
+        string path = GetSkillbarSavePath();
+        SkillbarManager.SaveData data = new SkillbarManager.SaveData(skillbarManager);
+        string json = JsonUtility.ToJson(data, true);
+        File.WriteAllText(path, json);
+    }
+
+    public static SkillbarManager.SaveData LoadPlayerSkillbar()
+    {
+        string path = GetSkillbarSavePath();
+        if (File.Exists(path))
+        {
+            string json = File.ReadAllText(path);
+            if (string.IsNullOrEmpty(json)) return null;
+            return JsonUtility.FromJson<SkillbarManager.SaveData>(json);
         }
         return null;
     }

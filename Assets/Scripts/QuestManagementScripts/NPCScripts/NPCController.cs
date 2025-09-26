@@ -1,67 +1,113 @@
 using UnityEngine;
 
 // This is the base interaction controller for all non-hostile NPCs.
-// It now implements the IInteractable interface and can trigger dialogues or shops.
+// It can be activated, deactivated, or moved based on quest completion.
 public class NPCController : MonoBehaviour, IInteractable
 {
     [Header("NPC Configuration")]
+    [Tooltip("A unique string ID for this NPC (e.g., 'GuardWilliam', 'ShopkeeperMary'). This MUST match the ID used in Talk Objectives.")]
+    [SerializeField] private string npcID;
     [Tooltip("Assign a Dialogue asset here for this NPC's main conversation.")]
     [SerializeField] private Dialogue dialogue;
+
+    [Header("Quest-Driven Activation")]
+    [Tooltip("(Optional) The quest that must be completed to affect this NPC's state.")]
+    [SerializeField] private Quest prerequisiteQuest;
+    [Tooltip("If checked, this NPC will be activated when the quest is complete. If unchecked, it will be deactivated.")]
+    [SerializeField] private bool activateOnQuestComplete = true;
+    [Tooltip("(Optional) An empty GameObject marking the position and rotation the NPC should move to after the quest is complete.")]
+    [SerializeField] private Transform postQuestTransform;
+
 
     // --- IInteractable Implementation ---
     public string InteractionPrompt { get; private set; }
 
-    /// <summary>
-    /// This is the method that will be called when the player interacts with this NPC.
-    /// It decides what to do based on the other components attached.
-    /// </summary>
     public void Interact()
     {
-        // Interaction priority: Shop > Dialogue > Quest > Default.
-
-        // 1. If this NPC is a shopkeeper, open the shop.
-        if (_shopkeeper != null)
+        if (!string.IsNullOrEmpty(npcID))
         {
-            _shopkeeper.OpenShop();
-            return;
+            GameEvents.ReportNpcTalkedTo(npcID);
         }
 
-        // 2. If they have a dialogue, start the conversation.
-        if (dialogue != null)
-        {
-            DialogueManager.Instance.StartDialogue(dialogue);
-            return;
-        }
+        if (_shopkeeper != null) { _shopkeeper.OpenShop(); return; }
+        if (dialogue != null) { DialogueManager.Instance.StartDialogue(dialogue); return; }
+        if (_questGiver != null) { _questGiver.Interact(); return; }
 
-        // 3. If they are a quest giver, interact with the quest system.
-        if (_questGiver != null)
-        {
-            _questGiver.Interact();
-            return;
-        }
-
-        // Default interaction if no other components are found.
         Debug.Log($"Hello, my name is {gameObject.name}.");
     }
 
     // --- Component References ---
     private QuestGiver _questGiver;
     private Shopkeeper _shopkeeper;
+    private QuestLog _playerQuestLog;
 
     private void Awake()
     {
-        // Get references to any potential interaction components on this NPC.
         _questGiver = GetComponent<QuestGiver>();
         _shopkeeper = GetComponent<Shopkeeper>();
 
-        // Update the interaction prompt based on the NPC's primary function.
-        if (_shopkeeper != null)
+        if (_shopkeeper != null) { InteractionPrompt = $"Trade with {gameObject.name}"; }
+        else { InteractionPrompt = $"Talk to {gameObject.name}"; }
+    }
+
+    private void Start()
+    {
+        if (GameManager.Instance != null && GameManager.Instance.QuestLog != null)
         {
-            InteractionPrompt = $"Trade with {gameObject.name}";
+            _playerQuestLog = GameManager.Instance.QuestLog;
+            // Subscribe to the event for dynamic updates during gameplay
+            _playerQuestLog.OnQuestCompleted += HandleQuestCompleted;
+            // Check the initial state when the scene loads
+            UpdateNpcState();
         }
         else
         {
-            InteractionPrompt = $"Talk to {gameObject.name}";
+            Debug.LogError("QuestLog not found via GameManager! NPC activation system will not work.", this);
+        }
+    }
+
+    private void OnDestroy()
+    {
+        // Always unsubscribe from events
+        if (_playerQuestLog != null)
+        {
+            _playerQuestLog.OnQuestCompleted -= HandleQuestCompleted;
+        }
+    }
+
+    // This method is called by the OnQuestCompleted event from the QuestLog
+    private void HandleQuestCompleted(Quest completedQuest)
+    {
+        // If the completed quest is the one we're waiting for, update our state.
+        if (prerequisiteQuest != null && completedQuest == prerequisiteQuest)
+        {
+            UpdateNpcState();
+        }
+    }
+
+    // Central logic to check the prerequisite and update the NPC's state
+    private void UpdateNpcState()
+    {
+        if (prerequisiteQuest == null || _playerQuestLog == null)
+        {
+            // If no prerequisite is set, do nothing.
+            return;
+        }
+
+        bool isPrerequisiteMet = _playerQuestLog.IsQuestCompleted(prerequisiteQuest);
+
+        // Determine the desired active state based on the quest and the inspector setting.
+        // If we want to ACTIVATE on complete, our desired state is TRUE if the prereq is met.
+        // If we want to DEACTIVATE on complete, our desired state is FALSE if the prereq is met.
+        bool desiredActiveState = isPrerequisiteMet ? activateOnQuestComplete : !activateOnQuestComplete;
+
+        gameObject.SetActive(desiredActiveState);
+
+        // If the prerequisite is met and a new location is assigned, move the NPC.
+        if (isPrerequisiteMet && postQuestTransform != null)
+        {
+            transform.position = postQuestTransform.position;
+            transform.rotation = postQuestTransform.rotation;
         }
     }
 }

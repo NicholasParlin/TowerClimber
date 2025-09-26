@@ -11,13 +11,16 @@ public class QuestStage
     public List<QuestObjective> objectives = new List<QuestObjective>();
 }
 
-// The Quest class is now a pure data container.
 [CreateAssetMenu(fileName = "New Quest", menuName = "Quests/Quest")]
 public class Quest : ScriptableObject
 {
     [Header("Quest Information")]
     public string questTitle;
     public string questGiverName;
+
+    [Header("Quest Dependencies")]
+    [Tooltip("(Optional) A list of quests that must be completed before this quest becomes available.")]
+    public List<Quest> prerequisiteQuests;
 
     [Header("Quest Descriptions")]
     [TextArea(3, 5)] public string briefDescription;
@@ -84,6 +87,8 @@ public class CollectObjective : QuestObjective
     [Header("Collect Objective Settings")]
     public string targetItemID;
     public int requiredAmount;
+    [Tooltip("If checked, the required items will be removed from the player's inventory upon quest completion.")]
+    public bool removeItemsOnCompletion = true; // NEW
 
     public override void CheckProgress(object data)
     {
@@ -104,7 +109,7 @@ public class CollectObjective : QuestObjective
 
     public override QuestObjective Clone()
     {
-        return new CollectObjective { description = this.description, goldReward = this.goldReward, experienceReward = this.experienceReward, targetItemID = this.targetItemID, requiredAmount = this.requiredAmount };
+        return new CollectObjective { description = this.description, goldReward = this.goldReward, experienceReward = this.experienceReward, targetItemID = this.targetItemID, requiredAmount = this.requiredAmount, removeItemsOnCompletion = this.removeItemsOnCompletion };
     }
 }
 

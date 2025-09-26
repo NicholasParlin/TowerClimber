@@ -9,11 +9,15 @@ public class SaveLoadManager : MonoBehaviour
     [Header("Player Component References")]
     [SerializeField] private GameObject playerObject;
 
+    // NEW: Reference to the SkillbarManager, which is often on a UI object.
+    [Header("UI Manager References")]
+    [SerializeField] private SkillbarManager skillbarManager;
+
     [Header("Database References")]
     [SerializeField] private SkillDatabase skillDatabase;
     [SerializeField] private QuestDatabase questDatabase;
     [SerializeField] private TitleDatabase titleDatabase;
-    [SerializeField] private ItemDatabase itemDatabase; // Reference to the ItemDatabase
+    [SerializeField] private ItemDatabase itemDatabase;
 
     // Private references to all player components
     private PlayerStats _playerStats;
@@ -70,6 +74,7 @@ public class SaveLoadManager : MonoBehaviour
         _questLog.SaveState();
         _inventoryManager.SaveState();
         _titleManager.SaveState();
+        skillbarManager.SaveState(); // NEW: Save the skillbar state.
 
         Debug.Log("--- GAME SAVED ---");
     }
@@ -82,19 +87,17 @@ public class SaveLoadManager : MonoBehaviour
         _playerSkillManager.LoadState(skillDatabase);
         _questLog.LoadState(questDatabase);
         _titleManager.LoadState(titleDatabase);
-
-        // --- THIS IS THE FIX ---
-        // We now correctly pass the itemDatabase to the inventory's LoadState method.
         _inventoryManager.LoadState(itemDatabase);
+        skillbarManager.LoadState(skillDatabase); // NEW: Load the skillbar state.
 
         Debug.Log("--- GAME LOADED ---");
     }
 
     private bool AreReferencesValid()
     {
-        if (_playerStats == null || _playerSkillManager == null || _questLog == null || _inventoryManager == null || _titleManager == null)
+        if (_playerStats == null || _playerSkillManager == null || _questLog == null || _inventoryManager == null || _titleManager == null || skillbarManager == null)
         {
-            Debug.LogError("Cannot save/load game, one or more player components are missing!");
+            Debug.LogError("Cannot save/load game, one or more component references are missing in the SaveLoadManager!");
             return false;
         }
         return true;

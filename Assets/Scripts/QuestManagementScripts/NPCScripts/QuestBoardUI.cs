@@ -12,11 +12,10 @@ public class QuestBoardUI : MonoBehaviour
     [Tooltip("The adapter that knows how to display Quest data.")]
     [SerializeField] private QuestDataAdapter questAdapter;
 
-    private List<QuestGiver> _allQuestGivers = new List<QuestGiver>();
+    private QuestLog _playerQuestLog;
 
     private void Start()
     {
-        _allQuestGivers.AddRange(FindObjectsByType<QuestGiver>(FindObjectsSortMode.None));
         questBoardPanel.SetActive(false);
     }
 
@@ -34,21 +33,33 @@ public class QuestBoardUI : MonoBehaviour
     private void PopulateQuestList()
     {
         if (virtualizedScrollView == null || questAdapter == null) return;
+        if (GameManager.Instance == null || GameManager.Instance.QuestLog == null)
+        {
+            Debug.LogError("GameManager or QuestLog not found! Quest Board cannot be populated.");
+            return;
+        }
 
+        _playerQuestLog = GameManager.Instance.QuestLog;
         List<object> availableQuests = new List<object>();
 
-        // Go through all known QuestGivers in the scene.
-        foreach (QuestGiver giver in _allQuestGivers)
+        foreach (QuestGiver giver in GameManager.Instance.AllQuestGivers)
         {
             Quest questData = giver.QuestData;
-            // Add quests that are available to be started.
+
             if (questData != null && questData.currentState == QuestState.NotStarted)
             {
-                availableQuests.Add(questData);
+                // MODIFIED: Check if all quests in the prerequisite list are completed.
+                bool prerequisitesMet = questData.prerequisiteQuests == null ||
+                                        !questData.prerequisiteQuests.Any() ||
+                                        questData.prerequisiteQuests.All(prereq => _playerQuestLog.IsQuestCompleted(prereq));
+
+                if (prerequisitesMet)
+                {
+                    availableQuests.Add(questData);
+                }
             }
         }
 
-        // Pass both the data and the adapter to the scroll view.
         virtualizedScrollView.Initialize(availableQuests, questAdapter);
     }
 }

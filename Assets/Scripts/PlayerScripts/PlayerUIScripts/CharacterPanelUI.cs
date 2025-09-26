@@ -3,15 +3,17 @@ using UnityEngine.UI;
 using System.Collections.Generic;
 using System.Linq;
 
-public class CharacterPanelUI : MonoBehaviour
+// MODIFIED: Inherits from our new UIPanel base class
+public class CharacterPanelUI : UIPanel
 {
     [Header("Player References")]
     [SerializeField] private PlayerStats playerStats;
     [SerializeField] private PlayerSkillManager playerSkillManager;
     [SerializeField] private TitleManager titleManager;
 
-    [Header("Main Panel")]
-    [SerializeField] private GameObject characterPanel;
+    // MODIFIED: The main panel is now handled by the base class.
+    // [Header("Main Panel")]
+    // [SerializeField] private GameObject characterPanel;
 
     [Header("Stat Allocation")]
     [SerializeField] private Text unspentPointsText;
@@ -28,8 +30,11 @@ public class CharacterPanelUI : MonoBehaviour
     [SerializeField] private Dropdown titleDropdown;
     [SerializeField] private Text titleDescriptionText;
 
-    private void Start()
+    // MODIFIED: The base class now handles the Start() method and deactivating the panel.
+    protected override void Start()
     {
+        base.Start();
+
         if (playerStats == null || playerSkillManager == null || titleManager == null)
         {
             Debug.LogError("One or more player references are not set on the CharacterPanelUI!");
@@ -45,7 +50,7 @@ public class CharacterPanelUI : MonoBehaviour
             passiveSkillsScrollView.OnItemCreated += OnPassiveSkillListingCreated;
         }
 
-        characterPanel.SetActive(false);
+        // The panel is already deactivated by the base class.
         UpdateStatPanel();
     }
 
@@ -60,13 +65,14 @@ public class CharacterPanelUI : MonoBehaviour
         }
     }
 
-    public void Toggle()
+    // MODIFIED: The Toggle method is removed. The UIManager will call Open() and Close() directly.
+    // public void Toggle() { ... }
+
+    // MODIFIED: We override the Open method to refresh all data when the panel is opened.
+    public override void Open()
     {
-        characterPanel.SetActive(!characterPanel.activeSelf);
-        if (characterPanel.activeSelf)
-        {
-            RefreshAllPanels();
-        }
+        base.Open();
+        RefreshAllPanels();
     }
 
     public void RefreshAllPanels()

@@ -19,6 +19,8 @@ public abstract class Item : ScriptableObject
     public ItemType itemType;
     public bool isStackable = true;
     public int maxStackSize = 99;
+    [Tooltip("If checked, this item cannot be sold or dropped. It can only be removed by completing a quest.")]
+    public bool isQuestItem = false; // NEW a
 
     [Header("Item Economy")]
     public int buyPrice = 10;
@@ -33,17 +35,17 @@ public abstract class Item : ScriptableObject
     /// </summary>
     public virtual void Use()
     {
-        GameObject player = GameObject.FindGameObjectWithTag("Player");
-        if (player == null)
+        if (GameManager.Instance == null || GameManager.Instance.PlayerStats == null)
         {
-            Debug.LogError("Item.Use(): Player not found in scene!");
+            Debug.LogError("Item.Use(): GameManager or Player not found in scene!");
             return;
         }
 
+        GameObject player = GameManager.Instance.PlayerStats.gameObject;
+
         foreach (GameplayEffect effect in effects)
         {
-            // By default, most item effects will target the user.
-            effect.Execute(null, player, player); // Source skill is null for items.
+            effect.Execute(null, player, player);
         }
     }
 }

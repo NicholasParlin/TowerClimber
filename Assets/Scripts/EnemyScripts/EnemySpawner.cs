@@ -15,11 +15,14 @@ public class EnemySpawner : MonoBehaviour
 
     private void Start()
     {
-        // Find the player's transform at the start.
-        _playerTransform = GameObject.FindGameObjectWithTag("Player")?.transform;
-        if (_playerTransform == null)
+        // MODIFIED: Find the player's transform via the GameManager at the start.
+        if (GameManager.Instance != null && GameManager.Instance.PlayerStats != null)
         {
-            Debug.LogError("Player not found! Enemy Spawner will not function.");
+            _playerTransform = GameManager.Instance.PlayerStats.transform;
+        }
+        else
+        {
+            Debug.LogError("Player not found via GameManager! Enemy Spawner will not function.", this);
             this.enabled = false;
         }
     }

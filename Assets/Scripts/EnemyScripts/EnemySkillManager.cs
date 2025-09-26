@@ -17,8 +17,16 @@ public class EnemySkillManager : SkillManagerBase
     {
         base.Awake(); // This calls the Awake() method in SkillManagerBase
 
-        // Find and store a reference to the player.
-        _playerTarget = GameObject.FindGameObjectWithTag("Player");
+        // MODIFIED: Find and store a reference to the player via the GameManager.
+        if (GameManager.Instance != null && GameManager.Instance.PlayerStats != null)
+        {
+            _playerTarget = GameManager.Instance.PlayerStats.gameObject;
+        }
+        else
+        {
+            Debug.LogError("GameManager or Player not found! Enemy Skill Manager will not function.", this);
+        }
+
 
         // Learn all skills from the assigned skill set.
         if (skillSet != null)

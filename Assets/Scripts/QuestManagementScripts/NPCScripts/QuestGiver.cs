@@ -1,4 +1,5 @@
 using UnityEngine;
+using System.Linq; // Required for LINQ queries like .All()
 
 // This component is attached to any NPC who can give a quest to the player.
 public class QuestGiver : MonoBehaviour
@@ -18,34 +19,52 @@ public class QuestGiver : MonoBehaviour
 
     private QuestLog _playerQuestLog;
 
+    private void OnEnable()
+    {
+        if (GameManager.Instance != null)
+        {
+            GameManager.Instance.RegisterQuestGiver(this);
+        }
+    }
+
+    private void OnDisable()
+    {
+        if (GameManager.Instance != null)
+        {
+            GameManager.Instance.UnregisterQuestGiver(this);
+        }
+    }
+
     private void Start()
     {
-        // Initially, all indicators are off.
         SetIndicatorStates(false, false);
     }
 
     private void Update()
     {
-        // This is a simple polling method to check quest states. In a larger game,
-        // this logic would be driven by events from the QuestLog for better performance.
         if (_playerQuestLog != null && quest != null)
         {
-            bool isAvailable = quest.currentState == QuestState.NotStarted;
+            // MODIFIED: Check if all prerequisite quests have been completed.
+            bool prerequisitesMet = quest.prerequisiteQuests == null || !quest.prerequisiteQuests.Any() || quest.prerequisiteQuests.All(prereq => _playerQuestLog.IsQuestCompleted(prereq));
+
+            bool isAvailable = quest.currentState == QuestState.NotStarted && prerequisitesMet;
             bool isReadyForTurnIn = quest.currentState == QuestState.ReadyForTurnIn;
             SetIndicatorStates(isAvailable, isReadyForTurnIn);
         }
     }
 
-    // This method is called when the player enters the NPC's trigger collider.
     private void OnTriggerEnter(Collider other)
     {
         if (other.CompareTag("Player"))
         {
-            _playerQuestLog = other.GetComponent<QuestLog>();
+            // MODIFIED: Get the QuestLog from the GameManager for robustness.
+            if (GameManager.Instance != null)
+            {
+                _playerQuestLog = GameManager.Instance.QuestLog;
+            }
         }
     }
 
-    // This method is called when the player leaves the NPC's trigger collider.
     private void OnTriggerExit(Collider other)
     {
         if (other.CompareTag("Player"))
@@ -54,10 +73,6 @@ public class QuestGiver : MonoBehaviour
         }
     }
 
-    /// <summary>
-    /// This method would be called when the player interacts with the NPC.
-    /// It handles the logic for offering, discussing, or completing the quest.
-    /// </summary>
     public void Interact()
     {
         if (_playerQuestLog == null || quest == null) return;
@@ -65,24 +80,29 @@ public class QuestGiver : MonoBehaviour
         switch (quest.currentState)
         {
             case QuestState.NotStarted:
-                // Offer the quest to the player.
-                Debug.Log($"Offering Quest: {quest.questTitle}");
-                _playerQuestLog.AddQuest(quest);
+                // MODIFIED: Check if all prerequisite quests have been completed.
+                bool prerequisitesMet = quest.prerequisiteQuests == null || !quest.prerequisiteQuests.Any() || quest.prerequisiteQuests.All(prereq => _playerQuestLog.IsQuestCompleted(prereq));
+                if (prerequisitesMet)
+                {
+                    Debug.Log($"Offering Quest: {quest.questTitle}");
+                    _playerQuestLog.AddQuest(quest);
+                }
+                else
+                {
+                    Debug.Log($"Cannot offer quest '{quest.questTitle}' yet. Prerequisites not met.");
+                }
                 break;
 
             case QuestState.Active:
-                // Provide a reminder or hint about the quest.
                 Debug.Log($"You are still working on: {quest.questTitle}.");
                 break;
 
             case QuestState.ReadyForTurnIn:
-                // Complete the quest.
                 Debug.Log($"Turning in Quest: {quest.questTitle}");
                 _playerQuestLog.CompleteQuest(quest);
                 break;
 
             case QuestState.Completed:
-                // Thank the player for their help.
                 Debug.Log($"Thank you again for completing {quest.questTitle}.");
                 break;
         }

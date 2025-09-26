@@ -1,24 +1,65 @@
 using System.Collections.Generic;
 using UnityEngine;
 using System.Linq;
+using System; // Required for Action
 
 // This component is attached to the player and manages all their quests, including saving and loading progress.
 [RequireComponent(typeof(PlayerStats), typeof(PlayerSkillManager), typeof(InventoryManager))]
 public class QuestLog : MonoBehaviour
 {
+    public event Action<Quest> OnQuestCompleted;
+    // NEW: An event that fires whenever an objective's progress changes.
+    public event Action<QuestObjective> OnObjectiveProgressUpdated;
+
     #region Save System Integration
+    [System.Serializable]
+    public class QuestObjectiveSaveData
+    {
+        public int currentAmount;
+    }
+
+    [System.Serializable]
+    public class QuestStatusSaveData
+    {
+        public string questID;
+        public int currentStageIndex;
+        public List<QuestObjectiveSaveData> objectiveProgress;
+    }
+
     [System.Serializable]
     public class SaveData
     {
-        public List<string> activeQuestIDs;
+        public List<QuestStatusSaveData> activeQuests;
         public List<string> completedQuestIDs;
-        // NOTE: A more complex save system would also save objective progress (e.g., kill counts).
-        // This version resets active quest progress on load for simplicity.
 
         public SaveData(QuestLog questLog)
         {
-            activeQuestIDs = questLog._activeQuests.Select(q => q.quest.name).ToList();
             completedQuestIDs = questLog._completedQuests.Select(q => q.name).ToList();
+            activeQuests = new List<QuestStatusSaveData>();
+
+            foreach (var activeQuestStatus in questLog._activeQuests)
+            {
+                var questStatusData = new QuestStatusSaveData
+                {
+                    questID = activeQuestStatus.quest.name,
+                    currentStageIndex = activeQuestStatus.currentStageIndex,
+                    objectiveProgress = new List<QuestObjectiveSaveData>()
+                };
+
+                foreach (var stage in activeQuestStatus.stages)
+                {
+                    foreach (var objective in stage.objectives)
+                    {
+                        var objectiveData = new QuestObjectiveSaveData();
+                        if (objective is KillObjective killObjective)
+                        {
+                            objectiveData.currentAmount = killObjective.currentAmount;
+                        }
+                        questStatusData.objectiveProgress.Add(objectiveData);
+                    }
+                }
+                activeQuests.Add(questStatusData);
+            }
         }
     }
 
@@ -39,7 +80,6 @@ public class QuestLog : MonoBehaviour
         _activeQuests.Clear();
         _completedQuests.Clear();
 
-        // Load completed quests from the save data.
         foreach (string questID in data.completedQuestIDs)
         {
             Quest quest = questDatabase.GetQuestByName(questID);
@@ -50,21 +90,52 @@ public class QuestLog : MonoBehaviour
             }
         }
 
-        // Load active quests from the save data.
-        foreach (string questID in data.activeQuestIDs)
+        foreach (var savedStatus in data.activeQuests)
         {
-            Quest quest = questDatabase.GetQuestByName(questID);
+            Quest quest = questDatabase.GetQuestByName(savedStatus.questID);
             if (quest != null)
             {
-                AddQuest(quest);
+                QuestStatus runtimeStatus = new QuestStatus(quest);
+                runtimeStatus.currentStageIndex = savedStatus.currentStageIndex;
+
+                int progressIndex = 0;
+                for (int i = 0; i < runtimeStatus.stages.Count; i++)
+                {
+                    for (int j = 0; j < runtimeStatus.stages[i].objectives.Count; j++)
+                    {
+                        if (progressIndex < savedStatus.objectiveProgress.Count)
+                        {
+                            var objective = runtimeStatus.stages[i].objectives[j];
+                            if (objective is KillObjective killObjective)
+                            {
+                                killObjective.currentAmount = savedStatus.objectiveProgress[progressIndex].currentAmount;
+                                if (killObjective.currentAmount >= killObjective.requiredAmount)
+                                {
+                                    killObjective.isComplete = true;
+                                }
+                            }
+                        }
+                        progressIndex++;
+                    }
+                }
+
+                _activeQuests.Add(runtimeStatus);
+
+                if (runtimeStatus.AreAllObjectivesInCurrentStageComplete() && runtimeStatus.currentStageIndex >= runtimeStatus.stages.Count - 1)
+                {
+                    quest.currentState = QuestState.ReadyForTurnIn;
+                }
+                else
+                {
+                    quest.currentState = QuestState.Active;
+                }
             }
         }
-        Debug.Log("Player quests loaded.");
+        Debug.Log("Player quests and progress loaded.");
     }
     #endregion
 
-    // A private class to track the runtime progress of a quest instance.
-    private class QuestStatus
+    public class QuestStatus
     {
         public Quest quest;
         public int currentStageIndex;
@@ -92,7 +163,6 @@ public class QuestLog : MonoBehaviour
     private List<QuestStatus> _activeQuests = new List<QuestStatus>();
     private List<Quest> _completedQuests = new List<Quest>();
 
-    // References to other core player components for giving rewards.
     private PlayerStats _playerStats;
     private PlayerSkillManager _playerSkillManager;
     private InventoryManager _inventoryManager;
@@ -106,16 +176,18 @@ public class QuestLog : MonoBehaviour
 
     private void OnEnable()
     {
-        // Subscribe to the global game events.
         GameEvents.OnEnemyKilled += HandleEnemyKilled;
         GameEvents.OnItemCollected += HandleItemCollected;
+        GameEvents.OnNpcTalkedTo += HandleNpcTalkedTo;
+        GameEvents.OnLocationDiscovered += HandleLocationDiscovered;
     }
 
     private void OnDisable()
     {
-        // Always unsubscribe to prevent errors.
         GameEvents.OnEnemyKilled -= HandleEnemyKilled;
         GameEvents.OnItemCollected -= HandleItemCollected;
+        GameEvents.OnNpcTalkedTo -= HandleNpcTalkedTo;
+        GameEvents.OnLocationDiscovered -= HandleLocationDiscovered;
     }
 
     public void AddQuest(Quest newQuest)
@@ -124,18 +196,20 @@ public class QuestLog : MonoBehaviour
         QuestStatus status = new QuestStatus(newQuest);
         _activeQuests.Add(status);
         status.quest.currentState = QuestState.Active;
-        UnlockObjectivesForStage(status, 0);
+        if (status.AreAllObjectivesInCurrentStageComplete())
+        {
+            status.quest.currentState = QuestState.ReadyForTurnIn;
+        }
+        else
+        {
+            UnlockObjectivesForStage(status, 0);
+        }
     }
 
-    private void HandleEnemyKilled(string enemyID)
-    {
-        CheckAllQuestProgress(enemyID);
-    }
-
-    private void HandleItemCollected(string itemID)
-    {
-        CheckAllQuestProgress(itemID);
-    }
+    private void HandleEnemyKilled(string enemyID) { CheckAllQuestProgress(enemyID); }
+    private void HandleItemCollected(string itemID) { CheckAllQuestProgress(itemID); }
+    private void HandleNpcTalkedTo(string npcID) { CheckAllQuestProgress(npcID); }
+    private void HandleLocationDiscovered(string locationID) { CheckAllQuestProgress(locationID); }
 
     private void CheckAllQuestProgress(object progressData)
     {
@@ -149,7 +223,22 @@ public class QuestLog : MonoBehaviour
             {
                 if (objective.isUnlocked && !objective.isComplete)
                 {
+                    // MODIFIED: Store the state before checking progress.
+                    int previousAmount = (objective is KillObjective ko) ? ko.currentAmount : 0;
+
                     objective.CheckProgress(progressData);
+
+                    // MODIFIED: If progress was made, fire the event.
+                    if (objective is KillObjective killObjective && killObjective.currentAmount > previousAmount)
+                    {
+                        OnObjectiveProgressUpdated?.Invoke(objective);
+                    }
+                    else if (objective.isComplete && previousAmount == 0) // For objectives that complete in one step
+                    {
+                        OnObjectiveProgressUpdated?.Invoke(objective);
+                    }
+
+
                     if (objective.isComplete)
                     {
                         GrantObjectiveRewards(objective);
@@ -192,8 +281,10 @@ public class QuestLog : MonoBehaviour
     public void CompleteQuest(Quest questToComplete)
     {
         QuestStatus status = _activeQuests.FirstOrDefault(q => q.quest == questToComplete);
-        if (status != null && status.quest.currentState == QuestState.ReadyForTurnIn)
+
+        if (status != null && (status.quest.currentState == QuestState.ReadyForTurnIn || !status.stages.Any(s => s.objectives.Any())))
         {
+            RemoveQuestItems(status);
             _activeQuests.Remove(status);
             _completedQuests.Add(questToComplete);
             questToComplete.currentState = QuestState.Completed;
@@ -204,6 +295,37 @@ public class QuestLog : MonoBehaviour
             {
                 _playerSkillManager.TryLearnNewSkill(questToComplete.finalSkillReward, SkillAcquisitionCategory.QuestReward);
             }
+
+            OnQuestCompleted?.Invoke(questToComplete);
         }
+    }
+
+    private void RemoveQuestItems(QuestStatus status)
+    {
+        foreach (var stage in status.stages)
+        {
+            foreach (var objective in stage.objectives)
+            {
+                if (objective is CollectObjective collectObjective && collectObjective.removeItemsOnCompletion)
+                {
+                    Item itemToRemove = _inventoryManager.inventory.FirstOrDefault(slot => slot.item.name == collectObjective.targetItemID)?.item;
+                    if (itemToRemove != null)
+                    {
+                        _inventoryManager.RemoveItem(itemToRemove, collectObjective.requiredAmount);
+                        Debug.Log($"Removed {collectObjective.requiredAmount} of {itemToRemove.name} from inventory for quest completion.");
+                    }
+                }
+            }
+        }
+    }
+
+    public bool IsQuestCompleted(Quest quest)
+    {
+        return _completedQuests.Contains(quest);
+    }
+
+    public List<QuestStatus> GetActiveQuestsForUI()
+    {
+        return _activeQuests;
     }
 }

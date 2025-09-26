@@ -1,29 +1,27 @@
 using UnityEngine;
 using System.Collections.Generic;
 
-[RequireComponent(typeof(CharacterStateManager))] // NEW: Now requires the state manager
+[RequireComponent(typeof(CharacterStateManager))]
 public class PlayerInputManager : MonoBehaviour
 {
     [Header("Component References")]
     [SerializeField] private PlayerSkillManager playerSkillManager;
-    [SerializeField] private InventoryUI inventoryUI;
-    [SerializeField] private CharacterPanelUI characterPanelUI;
-    [SerializeField] private PauseMenuUI pauseMenuUI;
+    // MODIFIED: The direct reference to PauseMenuUI is no longer needed here.
+    // [SerializeField] private PauseMenuUI pauseMenuUI; 
     [SerializeField] private PlayerInteraction playerInteraction;
 
-    // NEW: Reference to the state manager
     private CharacterStateManager _stateManager;
 
     [Header("UI & Interaction Key Bindings")]
     [SerializeField] private KeyCode inventoryKey = KeyCode.I;
     [SerializeField] private KeyCode characterPanelKey = KeyCode.C;
+    [SerializeField] private KeyCode questJournalKey = KeyCode.J;
     [SerializeField] private KeyCode pauseMenuKey = KeyCode.Escape;
     [SerializeField] private KeyCode interactKey = KeyCode.E;
 
     [Header("Active Skill Bindings")]
     [SerializeField] private List<SkillBinding> activeSkillBindings = new List<SkillBinding>();
 
-    // State variable to control actions
     private bool _canAct = true;
 
     [System.Serializable]
@@ -36,13 +34,11 @@ public class PlayerInputManager : MonoBehaviour
 
     private void Awake()
     {
-        // Get the state manager component.
         _stateManager = GetComponent<CharacterStateManager>();
     }
 
     private void OnEnable()
     {
-        // Subscribe to the state manager's event.
         if (_stateManager != null)
         {
             _stateManager.OnStateChanged += HandleStateChanged;
@@ -51,7 +47,6 @@ public class PlayerInputManager : MonoBehaviour
 
     private void OnDisable()
     {
-        // Always unsubscribe from events.
         if (_stateManager != null)
         {
             _stateManager.OnStateChanged -= HandleStateChanged;
@@ -60,22 +55,20 @@ public class PlayerInputManager : MonoBehaviour
 
     private void Update()
     {
-        // UI inputs are always checked, regardless of the player's state.
         HandleUIPanelInput();
 
-        // The pause key should also always be checked.
+        // MODIFIED: Pause key now goes through the UIManager as well.
         if (Input.GetKeyDown(pauseMenuKey))
         {
-            if (pauseMenuUI != null) { pauseMenuUI.TogglePauseMenu(); }
+            var pauseMenuPanel = UIManager.Instance.GetComponentInChildren<PauseMenuUI>(true);
+            if (pauseMenuPanel != null) UIManager.Instance.TogglePanel(pauseMenuPanel);
         }
 
-        // Don't process any game actions if the game is paused or the player can't act.
         if (PauseMenuUI.isGamePaused || !_canAct)
         {
             return;
         }
 
-        // Action inputs are only checked if the player is in a state that allows them to act.
         HandleInteractionInput();
         HandleActiveSkillInput();
     }
@@ -84,12 +77,20 @@ public class PlayerInputManager : MonoBehaviour
     {
         if (Input.GetKeyDown(inventoryKey))
         {
-            if (inventoryUI != null) { inventoryUI.Toggle(); }
+            var inventoryPanel = UIManager.Instance.GetComponentInChildren<InventoryUI>(true);
+            if (inventoryPanel != null) UIManager.Instance.TogglePanel(inventoryPanel);
         }
 
         if (Input.GetKeyDown(characterPanelKey))
         {
-            if (characterPanelUI != null) { characterPanelUI.Toggle(); }
+            var characterPanel = UIManager.Instance.GetComponentInChildren<CharacterPanelUI>(true);
+            if (characterPanel != null) UIManager.Instance.TogglePanel(characterPanel);
+        }
+
+        if (Input.GetKeyDown(questJournalKey))
+        {
+            var questJournalPanel = UIManager.Instance.GetComponentInChildren<QuestJournalUI>(true);
+            if (questJournalPanel != null) UIManager.Instance.TogglePanel(questJournalPanel);
         }
     }
 
@@ -116,12 +117,8 @@ public class PlayerInputManager : MonoBehaviour
         }
     }
 
-    /// <summary>
-    /// This method is called by the OnStateChanged event from the state manager.
-    /// </summary>
     private void HandleStateChanged(CharacterState newState)
     {
-        // Use the CanAct property from the state manager to determine if action keys should be enabled.
         _canAct = _stateManager.CanAct;
     }
 }
