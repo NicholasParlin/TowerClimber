@@ -4,17 +4,8 @@ using UnityEngine.SceneManagement; // Required for changing scenes
 // MODIFIED: Inherits from our new UIPanel base class
 public class PauseMenuUI : UIPanel
 {
-    // MODIFIED: The main panel is now handled by the base class.
-    // [SerializeField] private GameObject pauseMenuPanel;
-
     // A static variable to easily check if the game is paused from any script.
     public static bool isGamePaused = false;
-
-    // MODIFIED: The base class handles Start(), so we remove this.
-    // private void Start() { ... }
-
-    // MODIFIED: This is now handled by the UIManager.
-    // public void TogglePauseMenu() { ... }
 
     /// <summary>
     /// Resumes the game. Called by the UIManager or the resume button.
@@ -25,11 +16,12 @@ public class PauseMenuUI : UIPanel
         // It tells the UIManager to close the currently open panel, which is the pause menu.
         if (UIManager.Instance != null)
         {
-            UIManager.Instance.TogglePanel(this);
+            // MODIFIED: This now correctly calls CloseTopPanel, which is the intended action.
+            UIManager.Instance.CloseTopPanel();
         }
     }
 
-    // MODIFIED: We now override the Open() method from the base class.
+    // We now override the Open() method from the base class.
     public override void Open()
     {
         base.Open(); // This activates the panel GameObject.
@@ -37,7 +29,7 @@ public class PauseMenuUI : UIPanel
         isGamePaused = true;
     }
 
-    // MODIFIED: We now override the Close() method from the base class.
+    // We now override the Close() method from the base class.
     public override void Close()
     {
         base.Close(); // This deactivates the panel GameObject.

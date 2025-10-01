@@ -1,25 +1,48 @@
 using UnityEngine;
+using System.Collections.Generic;
+using System.Linq;
+
+// A helper class to link a specific Quest and its state to a Dialogue asset.
+[System.Serializable]
+public class QuestStateDialogue
+{
+    public Quest quest;
+    public QuestState requiredState;
+    public Dialogue dialogue;
+}
+
+// NEW: Enum to define what action to take when a prerequisite quest is completed.
+public enum PostQuestAction
+{
+    DoNothing,
+    Activate,
+    Deactivate,
+    Relocate,
+    ActivateAndRelocate,
+    DeactivateAndRelocate
+}
 
 // This is the base interaction controller for all non-hostile NPCs.
-// It can be activated, deactivated, or moved based on quest completion.
 public class NPCController : MonoBehaviour, IInteractable
 {
     [Header("NPC Configuration")]
-    [Tooltip("A unique string ID for this NPC (e.g., 'GuardWilliam', 'ShopkeeperMary'). This MUST match the ID used in Talk Objectives.")]
     [SerializeField] private string npcID;
-    [Tooltip("Assign a Dialogue asset here for this NPC's main conversation.")]
-    [SerializeField] private Dialogue dialogue;
 
-    [Header("Quest-Driven Activation")]
+    [Header("Quest-Driven Dialogue")]
+    [Tooltip("A prioritized list of dialogues to play based on quest states. The first condition met from top to bottom will be used.")]
+    [SerializeField] private List<QuestStateDialogue> questDialogues;
+    [Tooltip("The dialogue to play if no quest conditions are met.")]
+    [SerializeField] private Dialogue defaultDialogue;
+
+    [Header("Quest-Driven State Change")]
     [Tooltip("(Optional) The quest that must be completed to affect this NPC's state.")]
     [SerializeField] private Quest prerequisiteQuest;
-    [Tooltip("If checked, this NPC will be activated when the quest is complete. If unchecked, it will be deactivated.")]
-    [SerializeField] private bool activateOnQuestComplete = true;
-    [Tooltip("(Optional) An empty GameObject marking the position and rotation the NPC should move to after the quest is complete.")]
+    [Tooltip("The action to perform on this NPC once the prerequisite quest is completed.")]
+    [SerializeField] private PostQuestAction postQuestAction = PostQuestAction.DoNothing;
+    [Tooltip("(Optional) An empty GameObject marking the new position and rotation for this NPC.")]
     [SerializeField] private Transform postQuestTransform;
 
 
-    // --- IInteractable Implementation ---
     public string InteractionPrompt { get; private set; }
 
     public void Interact()
@@ -29,14 +52,33 @@ public class NPCController : MonoBehaviour, IInteractable
             GameEvents.ReportNpcTalkedTo(npcID);
         }
 
-        if (_shopkeeper != null) { _shopkeeper.OpenShop(); return; }
-        if (dialogue != null) { DialogueManager.Instance.StartDialogue(dialogue); return; }
-        if (_questGiver != null) { _questGiver.Interact(); return; }
+        Dialogue dialogueToPlay = GetCurrentDialogue();
+        if (dialogueToPlay != null)
+        {
+            DialogueManager.Instance.StartDialogue(dialogueToPlay);
+            return;
+        }
 
+        if (_shopkeeper != null) { _shopkeeper.OpenShop(); return; }
+        if (_questGiver != null) { _questGiver.Interact(); return; }
         Debug.Log($"Hello, my name is {gameObject.name}.");
     }
 
-    // --- Component References ---
+    private Dialogue GetCurrentDialogue()
+    {
+        if (_playerQuestLog != null)
+        {
+            foreach (var stateDialogue in questDialogues)
+            {
+                if (_playerQuestLog.GetQuestState(stateDialogue.quest) == stateDialogue.requiredState)
+                {
+                    return stateDialogue.dialogue;
+                }
+            }
+        }
+        return defaultDialogue;
+    }
+
     private QuestGiver _questGiver;
     private Shopkeeper _shopkeeper;
     private QuestLog _playerQuestLog;
@@ -55,59 +97,86 @@ public class NPCController : MonoBehaviour, IInteractable
         if (GameManager.Instance != null && GameManager.Instance.QuestLog != null)
         {
             _playerQuestLog = GameManager.Instance.QuestLog;
-            // Subscribe to the event for dynamic updates during gameplay
             _playerQuestLog.OnQuestCompleted += HandleQuestCompleted;
-            // Check the initial state when the scene loads
             UpdateNpcState();
         }
         else
         {
-            Debug.LogError("QuestLog not found via GameManager! NPC activation system will not work.", this);
+            Debug.LogError("QuestLog not found via GameManager! NPC systems will not work correctly.", this);
         }
     }
 
     private void OnDestroy()
     {
-        // Always unsubscribe from events
         if (_playerQuestLog != null)
         {
             _playerQuestLog.OnQuestCompleted -= HandleQuestCompleted;
         }
     }
 
-    // This method is called by the OnQuestCompleted event from the QuestLog
     private void HandleQuestCompleted(Quest completedQuest)
     {
-        // If the completed quest is the one we're waiting for, update our state.
         if (prerequisiteQuest != null && completedQuest == prerequisiteQuest)
         {
             UpdateNpcState();
         }
     }
 
-    // Central logic to check the prerequisite and update the NPC's state
     private void UpdateNpcState()
     {
-        if (prerequisiteQuest == null || _playerQuestLog == null)
-        {
-            // If no prerequisite is set, do nothing.
-            return;
-        }
+        if (prerequisiteQuest == null || _playerQuestLog == null) return;
 
         bool isPrerequisiteMet = _playerQuestLog.IsQuestCompleted(prerequisiteQuest);
 
-        // Determine the desired active state based on the quest and the inspector setting.
-        // If we want to ACTIVATE on complete, our desired state is TRUE if the prereq is met.
-        // If we want to DEACTIVATE on complete, our desired state is FALSE if the prereq is met.
-        bool desiredActiveState = isPrerequisiteMet ? activateOnQuestComplete : !activateOnQuestComplete;
-
-        gameObject.SetActive(desiredActiveState);
-
-        // If the prerequisite is met and a new location is assigned, move the NPC.
-        if (isPrerequisiteMet && postQuestTransform != null)
+        if (isPrerequisiteMet)
         {
-            transform.position = postQuestTransform.position;
-            transform.rotation = postQuestTransform.rotation;
+            // Prerequisite is met, so perform the chosen action.
+            switch (postQuestAction)
+            {
+                case PostQuestAction.Activate:
+                    gameObject.SetActive(true);
+                    break;
+                case PostQuestAction.Deactivate:
+                    gameObject.SetActive(false);
+                    break;
+                case PostQuestAction.Relocate:
+                    if (postQuestTransform != null)
+                    {
+                        transform.position = postQuestTransform.position;
+                        transform.rotation = postQuestTransform.rotation;
+                    }
+                    break;
+                case PostQuestAction.ActivateAndRelocate:
+                    gameObject.SetActive(true);
+                    if (postQuestTransform != null)
+                    {
+                        transform.position = postQuestTransform.position;
+                        transform.rotation = postQuestTransform.rotation;
+                    }
+                    break;
+                case PostQuestAction.DeactivateAndRelocate:
+                    // This case is illogical but handled. The object will move then deactivate.
+                    if (postQuestTransform != null)
+                    {
+                        transform.position = postQuestTransform.position;
+                        transform.rotation = postQuestTransform.rotation;
+                    }
+                    gameObject.SetActive(false);
+                    break;
+            }
+        }
+        else
+        {
+            // Prerequisite is not met, so ensure the default state.
+            // If the action is to activate on complete, it should start deactivated.
+            if (postQuestAction == PostQuestAction.Activate || postQuestAction == PostQuestAction.ActivateAndRelocate)
+            {
+                gameObject.SetActive(false);
+            }
+            else // Otherwise, it should start activated.
+            {
+                gameObject.SetActive(true);
+            }
         }
     }
 }

@@ -6,9 +6,13 @@ public class PlayerInputManager : MonoBehaviour
 {
     [Header("Component References")]
     [SerializeField] private PlayerSkillManager playerSkillManager;
-    // MODIFIED: The direct reference to PauseMenuUI is no longer needed here.
-    // [SerializeField] private PauseMenuUI pauseMenuUI; 
     [SerializeField] private PlayerInteraction playerInteraction;
+
+    [Header("UI Panel References")]
+    [SerializeField] private InventoryUI inventoryUI;
+    [SerializeField] private CharacterPanelUI characterPanelUI;
+    [SerializeField] private QuestJournalUI questJournalUI;
+    [SerializeField] private PauseMenuUI pauseMenuUI;
 
     private CharacterStateManager _stateManager;
 
@@ -57,12 +61,7 @@ public class PlayerInputManager : MonoBehaviour
     {
         HandleUIPanelInput();
 
-        // MODIFIED: Pause key now goes through the UIManager as well.
-        if (Input.GetKeyDown(pauseMenuKey))
-        {
-            var pauseMenuPanel = UIManager.Instance.GetComponentInChildren<PauseMenuUI>(true);
-            if (pauseMenuPanel != null) UIManager.Instance.TogglePanel(pauseMenuPanel);
-        }
+        // MODIFIED: The pause key logic is now handled within HandleUIPanelInput.
 
         if (PauseMenuUI.isGamePaused || !_canAct)
         {
@@ -75,22 +74,52 @@ public class PlayerInputManager : MonoBehaviour
 
     private void HandleUIPanelInput()
     {
+        if (UIManager.Instance == null) return;
+
         if (Input.GetKeyDown(inventoryKey))
         {
-            var inventoryPanel = UIManager.Instance.GetComponentInChildren<InventoryUI>(true);
-            if (inventoryPanel != null) UIManager.Instance.TogglePanel(inventoryPanel);
+            TogglePanel(inventoryUI);
         }
 
         if (Input.GetKeyDown(characterPanelKey))
         {
-            var characterPanel = UIManager.Instance.GetComponentInChildren<CharacterPanelUI>(true);
-            if (characterPanel != null) UIManager.Instance.TogglePanel(characterPanel);
+            TogglePanel(characterPanelUI);
         }
 
         if (Input.GetKeyDown(questJournalKey))
         {
-            var questJournalPanel = UIManager.Instance.GetComponentInChildren<QuestJournalUI>(true);
-            if (questJournalPanel != null) UIManager.Instance.TogglePanel(questJournalPanel);
+            TogglePanel(questJournalUI);
+        }
+
+        // MODIFIED: Escape key now has more intelligent logic.
+        if (Input.GetKeyDown(pauseMenuKey))
+        {
+            // If any panel is currently open, the Escape key's first job is to close it.
+            if (UIManager.Instance.TopPanel != null)
+            {
+                UIManager.Instance.CloseTopPanel();
+            }
+            else // If no other panels are open, then toggle the pause menu.
+            {
+                TogglePanel(pauseMenuUI);
+            }
+        }
+    }
+
+    // A helper method to simplify toggling panels.
+    private void TogglePanel(UIPanel panel)
+    {
+        if (panel == null) return;
+
+        var topPanel = UIManager.Instance.TopPanel;
+
+        if (topPanel == panel)
+        {
+            UIManager.Instance.CloseTopPanel();
+        }
+        else
+        {
+            UIManager.Instance.OpenPanel(panel);
         }
     }
 

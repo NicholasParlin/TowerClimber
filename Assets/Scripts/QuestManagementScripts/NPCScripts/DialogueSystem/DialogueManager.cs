@@ -53,6 +53,12 @@ public class DialogueManager : MonoBehaviour
         DialogueLine currentLine = _lineQueue.Dequeue();
         speakerNameText.text = currentLine.speakerName;
         lineText.text = currentLine.lineText;
+
+        // NEW: Check if the line has an event and invoke it.
+        if (currentLine.onShowLine != null)
+        {
+            currentLine.onShowLine.Invoke();
+        }
     }
 
     private void EndDialogue()

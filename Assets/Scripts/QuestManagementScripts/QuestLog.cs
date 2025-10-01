@@ -8,7 +8,7 @@ using System; // Required for Action
 public class QuestLog : MonoBehaviour
 {
     public event Action<Quest> OnQuestCompleted;
-    // NEW: An event that fires whenever an objective's progress changes.
+    // CORRECTLY DEFINED: An event that fires whenever an objective's progress changes.
     public event Action<QuestObjective> OnObjectiveProgressUpdated;
 
     #region Save System Integration
@@ -223,21 +223,16 @@ public class QuestLog : MonoBehaviour
             {
                 if (objective.isUnlocked && !objective.isComplete)
                 {
-                    // MODIFIED: Store the state before checking progress.
                     int previousAmount = (objective is KillObjective ko) ? ko.currentAmount : 0;
-
                     objective.CheckProgress(progressData);
 
-                    // MODIFIED: If progress was made, fire the event.
-                    if (objective is KillObjective killObjective && killObjective.currentAmount > previousAmount)
-                    {
-                        OnObjectiveProgressUpdated?.Invoke(objective);
-                    }
-                    else if (objective.isComplete && previousAmount == 0) // For objectives that complete in one step
-                    {
-                        OnObjectiveProgressUpdated?.Invoke(objective);
-                    }
+                    bool justCompleted = objective.isComplete && previousAmount == 0;
+                    bool progressMade = (objective is KillObjective k) && k.currentAmount > previousAmount;
 
+                    if (justCompleted || progressMade)
+                    {
+                        OnObjectiveProgressUpdated?.Invoke(objective);
+                    }
 
                     if (objective.isComplete)
                     {
@@ -322,6 +317,23 @@ public class QuestLog : MonoBehaviour
     public bool IsQuestCompleted(Quest quest)
     {
         return _completedQuests.Contains(quest);
+    }
+
+    public QuestState GetQuestState(Quest quest)
+    {
+        if (_completedQuests.Contains(quest))
+        {
+            return QuestState.Completed;
+        }
+        if (_activeQuests.Any(q => q.quest == quest))
+        {
+            QuestStatus status = _activeQuests.FirstOrDefault(q => q.quest == quest);
+            if (status != null)
+            {
+                return status.quest.currentState;
+            }
+        }
+        return QuestState.NotStarted;
     }
 
     public List<QuestStatus> GetActiveQuestsForUI()
