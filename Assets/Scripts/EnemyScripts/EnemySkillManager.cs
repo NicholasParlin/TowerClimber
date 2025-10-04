@@ -1,23 +1,31 @@
 using UnityEngine;
+using System.Collections;
 using System.Collections.Generic;
-using System.Linq; // Required for .ToList()
+using System.Linq;
 
-// REFACTORED to inherit from SkillManagerBase for consistency and code reuse.
+[RequireComponent(typeof(EnemyController))] // NEW: Require the controller
 public class EnemySkillManager : SkillManagerBase
 {
     [Header("Enemy Skill Configuration")]
-    [Tooltip("Assign the Skill Set ScriptableObject that defines this enemy's abilities.")]
     [SerializeField] private EnemySkillSet skillSet;
+    [Tooltip("How often (in seconds) the AI should re-evaluate its best action.")]
+    [SerializeField] private float decisionInterval = 1.0f;
 
-    // A reference to the player's GameObject to use as a target.
     private GameObject _playerTarget;
+    private EnemyController _controller; // Reference to the controller for context
 
-    // This overrides the base Awake method but also calls it.
+    // This class will hold a potential action and its calculated score.
+    private class ScoredAction
+    {
+        public Skill Skill { get; set; }
+        public float Score { get; set; }
+    }
+
     protected override void Awake()
     {
-        base.Awake(); // This calls the Awake() method in SkillManagerBase
+        base.Awake();
+        _controller = GetComponent<EnemyController>();
 
-        // MODIFIED: Find and store a reference to the player via the GameManager.
         if (GameManager.Instance != null && GameManager.Instance.PlayerStats != null)
         {
             _playerTarget = GameManager.Instance.PlayerStats.gameObject;
@@ -27,56 +35,87 @@ public class EnemySkillManager : SkillManagerBase
             Debug.LogError("GameManager or Player not found! Enemy Skill Manager will not function.", this);
         }
 
-
-        // Learn all skills from the assigned skill set.
         if (skillSet != null)
         {
             foreach (Skill skill in skillSet.skills)
             {
-                if (skill != null)
-                {
-                    // Using the base class's method to learn skills.
-                    LearnNewSkill(skill);
-                }
+                if (skill != null) LearnNewSkill(skill);
             }
         }
-        else
+    }
+
+    private void OnEnable()
+    {
+        StartCoroutine(DecisionCoroutine());
+    }
+
+    private void OnDisable()
+    {
+        StopAllCoroutines();
+    }
+
+    // The main AI decision loop
+    private IEnumerator DecisionCoroutine()
+    {
+        while (true)
         {
-            Debug.LogWarning($"No Skill Set assigned to {gameObject.name}. This enemy will have no skills.");
+            yield return new WaitForSeconds(decisionInterval);
+            if (_controller.CanMakeDecision())
+            {
+                DecideNextAction();
+            }
         }
     }
 
-    // This overrides the base Update method but also calls it.
-    protected override void Update()
+    // The core of the Utility AI system
+    private void DecideNextAction()
     {
-        base.Update(); // This handles cooldowns and activation locks automatically.
-        SimpleAIUpdate();
-    }
-
-    /// <summary>
-    /// A very basic placeholder AI that tries to use a random skill on a timer.
-    /// </summary>
-    private void SimpleAIUpdate()
-    {
-        // Don't do anything if there are no learned skills or no target.
         if (learnedSkills.Count == 0 || _playerTarget == null) return;
 
-        // Simple timer logic
-        if (Time.time > _nextSkillCheckTime)
+        List<ScoredAction> scoredActions = new List<ScoredAction>();
+
+        // Loop through every learned skill to score it
+        foreach (var skillList in learnedSkills.Values)
         {
-            // --- CORRECTED LOGIC ---
-            // 1. Get all the lists of skills from the dictionary.
-            List<List<Skill>> allSkillLists = learnedSkills.Values.ToList();
-            // 2. Pick a random list.
-            List<Skill> randomSkillList = allSkillLists[Random.Range(0, allSkillLists.Count)];
-            // 3. Pick a random skill from that list.
-            Skill randomSkill = randomSkillList[Random.Range(0, randomSkillList.Count)];
+            foreach (Skill skill in skillList)
+            {
+                // First, check if the skill can even be used (cooldown, resources)
+                if (!CanUseSkill(skill)) continue;
 
-            // We now use the TryToUseSkill method inherited from the base class, passing the player as the target.
-            TryToUseSkill(randomSkill, _playerTarget);
+                float currentScore = skill.baseUtilityScore;
+                float scoreModifier = 1f;
 
-            _nextSkillCheckTime = Time.time + 2.0f;
+                // Multiply the score by the result of each consideration's curve
+                foreach (AIAction consideration in skill.aiActions)
+                {
+                    scoreModifier *= consideration.Score(_controller);
+                }
+
+                currentScore *= scoreModifier;
+                scoredActions.Add(new ScoredAction { Skill = skill, Score = currentScore });
+            }
+        }
+
+        // If no actions are viable, do nothing
+        if (scoredActions.Count == 0)
+        {
+            _controller.SetNextAction(null);
+            return;
+        }
+
+        // Find the action with the highest score
+        ScoredAction bestAction = scoredActions.OrderByDescending(a => a.Score).First();
+
+        // Tell the controller what the best action is
+        _controller.SetNextAction(bestAction.Skill);
+    }
+
+    // A public method for the controller to execute the chosen skill
+    public void ExecuteSkill(Skill skill)
+    {
+        if (skill != null && _playerTarget != null)
+        {
+            TryToUseSkill(skill, _playerTarget);
         }
     }
-    private float _nextSkillCheckTime;
 }

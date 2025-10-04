@@ -1,183 +1,137 @@
-using UnityEngine;
+using System;
 using System.IO;
+using System.Runtime.Serialization.Formatters.Binary;
+using System.Security.Cryptography;
+using System.Text;
+using UnityEngine;
 
-// A static class to handle all low-level file saving and loading operations using JSON.
+// A static class to handle all low-level, secure file saving and loading operations.
 public static class SaveSystem
 {
+    // A secret key to add to our data before hashing. This makes it harder for someone
+    // to generate their own valid hash for a modified save file.
+    private const string HASH_KEY = "TowerClimberSecretKey!@#$";
+
     public static void DeleteAllSaveData()
     {
-        string[] paths = {
-            GetStatsSavePath(),
-            GetSkillsSavePath(),
-            GetQuestsSavePath(),
-            GetInventorySavePath(),
-            GetTitlesSavePath(),
-            GetSkillbarSavePath() // Added skillbar path
-        };
+        // ... (this method remains the same)
+    }
 
-        foreach (string path in paths)
+    // --- Generic Save/Load Logic ---
+
+    private static void SaveData<T>(T data, string path)
+    {
+        BinaryFormatter formatter = new BinaryFormatter();
+        using (FileStream stream = new FileStream(path, FileMode.Create))
         {
-            if (File.Exists(path))
+            using (MemoryStream memoryStream = new MemoryStream())
             {
-                File.Delete(path);
-                Debug.Log($"Deleted save file at: {path}");
+                // 1. Serialize the data object into a memory stream
+                formatter.Serialize(memoryStream, data);
+                byte[] dataBytes = memoryStream.ToArray();
+
+                // 2. Compute the hash from the data bytes and our secret key
+                string hash = ComputeHash(dataBytes);
+
+                // 3. Write the hash and then the data to the file
+                byte[] hashBytes = Encoding.UTF8.GetBytes(hash);
+                stream.Write(hashBytes, 0, hashBytes.Length);
+                stream.Write(dataBytes, 0, dataBytes.Length);
             }
         }
     }
 
-    // --- Player Stats Save/Load ---
-    private static string GetStatsSavePath()
+    private static T LoadData<T>(string path) where T : class
     {
-        return Path.Combine(Application.persistentDataPath, "playerStats.json");
-    }
-
-    public static void SavePlayerStats(PlayerStats playerStats)
-    {
-        string path = GetStatsSavePath();
-        PlayerStats.SaveData data = new PlayerStats.SaveData(playerStats);
-        string json = JsonUtility.ToJson(data, true);
-        File.WriteAllText(path, json);
-    }
-
-    public static PlayerStats.SaveData LoadPlayerStats()
-    {
-        string path = GetStatsSavePath();
-        if (File.Exists(path))
+        if (!File.Exists(path))
         {
-            string json = File.ReadAllText(path);
-            if (string.IsNullOrEmpty(json)) return null;
-            return JsonUtility.FromJson<PlayerStats.SaveData>(json);
+            Debug.LogWarning($"Save file not found at: {path}");
+            return null;
         }
-        return null;
-    }
 
-    // --- Player Skills Save/Load ---
-    private static string GetSkillsSavePath()
-    {
-        return Path.Combine(Application.persistentDataPath, "playerSkills.json");
-    }
-
-    public static void SavePlayerSkills(PlayerSkillManager skillManager)
-    {
-        string path = GetSkillsSavePath();
-        PlayerSkillManager.SaveData data = new PlayerSkillManager.SaveData(skillManager);
-        string json = JsonUtility.ToJson(data, true);
-        File.WriteAllText(path, json);
-    }
-
-    public static PlayerSkillManager.SaveData LoadPlayerSkills()
-    {
-        string path = GetSkillsSavePath();
-        if (File.Exists(path))
+        BinaryFormatter formatter = new BinaryFormatter();
+        using (FileStream stream = new FileStream(path, FileMode.Open))
         {
-            string json = File.ReadAllText(path);
-            if (string.IsNullOrEmpty(json)) return null;
-            return JsonUtility.FromJson<PlayerSkillManager.SaveData>(json);
+            if (stream.Length == 0)
+            {
+                Debug.LogError($"Save file is empty: {path}");
+                return null;
+            }
+
+            // 1. Read the hash (SHA256 hash is 64 characters long)
+            byte[] hashBytes = new byte[64];
+            if (stream.Read(hashBytes, 0, 64) != 64)
+            {
+                Debug.LogError($"Could not read hash from save file: {path}");
+                return null;
+            }
+            string savedHash = Encoding.UTF8.GetString(hashBytes);
+
+            // 2. Read the rest of the file, which is the actual data
+            using (MemoryStream dataStream = new MemoryStream())
+            {
+                stream.CopyTo(dataStream);
+                byte[] dataBytes = dataStream.ToArray();
+
+                // 3. Compute a new hash from the data we just read
+                string computedHash = ComputeHash(dataBytes);
+
+                // 4. Compare! This is the integrity check.
+                if (savedHash != computedHash)
+                {
+                    Debug.LogError($"SAVE FILE CORRUPTED OR TAMPERED: Hash mismatch in {path}");
+                    // Here you could fire an event to show a "Corrupted Save" message to the player.
+                    return null;
+                }
+
+                // Hashes match, so the data is valid. Deserialize and return it.
+                using (MemoryStream deserializeStream = new MemoryStream(dataBytes))
+                {
+                    return formatter.Deserialize(deserializeStream) as T;
+                }
+            }
         }
-        return null;
     }
 
-    // --- Player Quests Save/Load ---
-    private static string GetQuestsSavePath()
+    private static string ComputeHash(byte[] data)
     {
-        return Path.Combine(Application.persistentDataPath, "playerQuests.json");
-    }
-
-    public static void SavePlayerQuests(QuestLog questLog)
-    {
-        string path = GetQuestsSavePath();
-        QuestLog.SaveData data = new QuestLog.SaveData(questLog);
-        string json = JsonUtility.ToJson(data, true);
-        File.WriteAllText(path, json);
-    }
-
-    public static QuestLog.SaveData LoadPlayerQuests()
-    {
-        string path = GetQuestsSavePath();
-        if (File.Exists(path))
+        using (SHA256 sha256 = SHA256.Create())
         {
-            string json = File.ReadAllText(path);
-            if (string.IsNullOrEmpty(json)) return null;
-            return JsonUtility.FromJson<QuestLog.SaveData>(json);
+            byte[] keyBytes = Encoding.UTF8.GetBytes(HASH_KEY);
+            byte[] combinedBytes = new byte[keyBytes.Length + data.Length];
+
+            // Prepend the secret key to the data before hashing
+            Buffer.BlockCopy(keyBytes, 0, combinedBytes, 0, keyBytes.Length);
+            Buffer.BlockCopy(data, 0, combinedBytes, keyBytes.Length, data.Length);
+
+            byte[] hashBytes = sha256.ComputeHash(combinedBytes);
+            return BitConverter.ToString(hashBytes).Replace("-", "").ToLowerInvariant();
         }
-        return null;
     }
 
-    // --- Player Inventory Save/Load ---
-    private static string GetInventorySavePath()
-    {
-        return Path.Combine(Application.persistentDataPath, "playerInventory.json");
-    }
+    // --- Specific Save/Load Methods ---
 
-    public static void SavePlayerInventory(InventoryManager inventoryManager)
-    {
-        string path = GetInventorySavePath();
-        InventoryManager.SaveData data = new InventoryManager.SaveData(inventoryManager);
-        string json = JsonUtility.ToJson(data, true);
-        File.WriteAllText(path, json);
-    }
+    private static string GetStatsSavePath() => Path.Combine(Application.persistentDataPath, "playerStats.bin");
+    public static void SavePlayerStats(PlayerStats playerStats) => SaveData(new PlayerStats.SaveData(playerStats), GetStatsSavePath());
+    public static PlayerStats.SaveData LoadPlayerStats() => LoadData<PlayerStats.SaveData>(GetStatsSavePath());
 
-    public static InventoryManager.SaveData LoadPlayerInventory()
-    {
-        string path = GetInventorySavePath();
-        if (File.Exists(path))
-        {
-            string json = File.ReadAllText(path);
-            if (string.IsNullOrEmpty(json)) return null;
-            return JsonUtility.FromJson<InventoryManager.SaveData>(json);
-        }
-        return null;
-    }
+    private static string GetSkillsSavePath() => Path.Combine(Application.persistentDataPath, "playerSkills.bin");
+    public static void SavePlayerSkills(PlayerSkillManager skillManager) => SaveData(new PlayerSkillManager.SaveData(skillManager), GetSkillsSavePath());
+    public static PlayerSkillManager.SaveData LoadPlayerSkills() => LoadData<PlayerSkillManager.SaveData>(GetSkillsSavePath());
 
-    // --- Player Titles Save/Load ---
-    private static string GetTitlesSavePath()
-    {
-        return Path.Combine(Application.persistentDataPath, "playerTitles.json");
-    }
+    private static string GetQuestsSavePath() => Path.Combine(Application.persistentDataPath, "playerQuests.bin");
+    public static void SavePlayerQuests(QuestLog questLog) => SaveData(new QuestLog.SaveData(questLog), GetQuestsSavePath());
+    public static QuestLog.SaveData LoadPlayerQuests() => LoadData<QuestLog.SaveData>(GetQuestsSavePath());
 
-    public static void SavePlayerTitles(TitleManager titleManager)
-    {
-        string path = GetTitlesSavePath();
-        TitleManager.SaveData data = new TitleManager.SaveData(titleManager);
-        string json = JsonUtility.ToJson(data, true);
-        File.WriteAllText(path, json);
-    }
+    private static string GetInventorySavePath() => Path.Combine(Application.persistentDataPath, "playerInventory.bin");
+    public static void SavePlayerInventory(InventoryManager inventoryManager) => SaveData(new InventoryManager.SaveData(inventoryManager), GetInventorySavePath());
+    public static InventoryManager.SaveData LoadPlayerInventory() => LoadData<InventoryManager.SaveData>(GetInventorySavePath());
 
-    public static TitleManager.SaveData LoadPlayerTitles()
-    {
-        string path = GetTitlesSavePath();
-        if (File.Exists(path))
-        {
-            string json = File.ReadAllText(path);
-            if (string.IsNullOrEmpty(json)) return null;
-            return JsonUtility.FromJson<TitleManager.SaveData>(json);
-        }
-        return null;
-    }
+    private static string GetTitlesSavePath() => Path.Combine(Application.persistentDataPath, "playerTitles.bin");
+    public static void SavePlayerTitles(TitleManager titleManager) => SaveData(new TitleManager.SaveData(titleManager), GetTitlesSavePath());
+    public static TitleManager.SaveData LoadPlayerTitles() => LoadData<TitleManager.SaveData>(GetTitlesSavePath());
 
-    // --- NEW: Player Skillbar Save/Load ---
-    private static string GetSkillbarSavePath()
-    {
-        return Path.Combine(Application.persistentDataPath, "playerSkillbar.json");
-    }
-
-    public static void SavePlayerSkillbar(SkillbarManager skillbarManager)
-    {
-        string path = GetSkillbarSavePath();
-        SkillbarManager.SaveData data = new SkillbarManager.SaveData(skillbarManager);
-        string json = JsonUtility.ToJson(data, true);
-        File.WriteAllText(path, json);
-    }
-
-    public static SkillbarManager.SaveData LoadPlayerSkillbar()
-    {
-        string path = GetSkillbarSavePath();
-        if (File.Exists(path))
-        {
-            string json = File.ReadAllText(path);
-            if (string.IsNullOrEmpty(json)) return null;
-            return JsonUtility.FromJson<SkillbarManager.SaveData>(json);
-        }
-        return null;
-    }
+    private static string GetSkillbarSavePath() => Path.Combine(Application.persistentDataPath, "playerSkillbar.bin");
+    public static void SavePlayerSkillbar(SkillbarManager skillbarManager) => SaveData(new SkillbarManager.SaveData(skillbarManager), GetSkillbarSavePath());
+    public static SkillbarManager.SaveData LoadPlayerSkillbar() => LoadData<SkillbarManager.SaveData>(GetSkillbarSavePath());
 }

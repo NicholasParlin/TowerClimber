@@ -38,6 +38,12 @@ public class Skill : ScriptableObject
     [Header("Gameplay Effects (for Active Skills)")]
     public List<EffectInSequence> effectSequence;
 
+    [Header("AI Behavior")]
+    [Tooltip("The base score or 'desire' for an AI to use this skill.")]
+    public float baseUtilityScore = 20f;
+    [Tooltip("A list of considerations that will modify the base score.")]
+    public List<AIAction> aiActions; // This is the new line you need to add
+
     public IEnumerator Activate(SkillManagerBase skillManager, GameObject caster, GameObject target)
     {
         foreach (EffectInSequence sequenceItem in effectSequence)

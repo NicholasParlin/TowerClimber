@@ -1,7 +1,7 @@
 using UnityEngine;
 
 [RequireComponent(typeof(CharacterController))]
-[RequireComponent(typeof(CharacterStateManager))] // NEW: Now requires the state manager
+[RequireComponent(typeof(CharacterStateManager))]
 public class PlayerMovement : MonoBehaviour
 {
     [Header("Movement Settings")]
@@ -13,12 +13,11 @@ public class PlayerMovement : MonoBehaviour
     [Tooltip("Assign the main camera's Transform here.")]
     [SerializeField] private Transform cameraTransform;
 
-    // Component references
     private CharacterController _controller;
-    private CharacterStateManager _stateManager; // NEW: Reference to the state manager
+    private CharacterStateManager _stateManager;
 
-    // State variable to control movement
     private bool _canMove = true;
+    private Vector2 _currentInput = Vector2.zero;
 
     private void Awake()
     {
@@ -28,13 +27,11 @@ public class PlayerMovement : MonoBehaviour
         if (cameraTransform == null)
         {
             cameraTransform = Camera.main.transform;
-            Debug.LogWarning("Camera Transform was not assigned. Defaulting to main camera.");
         }
     }
 
     private void OnEnable()
     {
-        // Subscribe to the state manager's event.
         if (_stateManager != null)
         {
             _stateManager.OnStateChanged += HandleStateChanged;
@@ -43,7 +40,6 @@ public class PlayerMovement : MonoBehaviour
 
     private void OnDisable()
     {
-        // Always unsubscribe from events.
         if (_stateManager != null)
         {
             _stateManager.OnStateChanged -= HandleStateChanged;
@@ -52,21 +48,22 @@ public class PlayerMovement : MonoBehaviour
 
     private void Update()
     {
-        // If we can't move, do nothing.
         if (!_canMove)
         {
             _controller.Move(Vector3.zero);
             return;
         }
-
         HandleMovement();
+    }
+
+    public void SetMoveInput(Vector2 moveInput)
+    {
+        _currentInput = moveInput;
     }
 
     private void HandleMovement()
     {
-        float horizontal = Input.GetAxisRaw("Horizontal");
-        float vertical = Input.GetAxisRaw("Vertical");
-        Vector3 direction = new Vector3(horizontal, 0f, vertical).normalized;
+        Vector3 direction = new Vector3(_currentInput.x, 0f, _currentInput.y).normalized;
 
         if (direction.magnitude >= 0.1f)
         {
@@ -79,12 +76,12 @@ public class PlayerMovement : MonoBehaviour
         }
     }
 
-    /// <summary>
-    /// This method is called by the OnStateChanged event from the state manager.
-    /// </summary>
     private void HandleStateChanged(CharacterState newState)
     {
-        // Movement is only allowed in the Idle and Moving states.
         _canMove = (newState == CharacterState.Idle || newState == CharacterState.Moving);
+        if (!_canMove)
+        {
+            _currentInput = Vector2.zero;
+        }
     }
 }
