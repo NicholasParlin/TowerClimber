@@ -27,29 +27,36 @@ public class AIAction : ScriptableObject
 
     /// <summary>
     /// Calculates the score for this specific consideration.
+    /// MODIFIED: The method now accepts the new EnemyStateManager.
     /// </summary>
-    /// <param name="controller">The enemy AI controller.</param>
+    /// <param name="controller">The enemy's state manager, which holds all contextual info.</param>
     /// <returns>A score multiplier (typically 0 to 1).</returns>
-    public float Score(EnemyController controller)
+    public float Score(EnemyStateManager controller)
     {
         if (controller == null) return 0f;
 
         float normalizedValue = 0f;
 
+        // We need a reference to the enemy's stats to calculate health percentage.
+        // Let's get it from the EnemyStateManager's context.
+        CharacterStatsBase stats = controller.GetComponent<CharacterStatsBase>();
+        if (stats == null) return 0f;
+
         switch (considerationType)
         {
             case ConsiderationType.MyHealth:
-                normalizedValue = controller.GetHealthPercentage();
+                // MODIFIED: Calculate health percentage using the stats component.
+                normalizedValue = stats.currentHealth / stats.maxHealth;
                 break;
 
             case ConsiderationType.TargetDistance:
-                normalizedValue = controller.GetDistanceToTarget() / controller.GetDetectionRadius();
+                // MODIFIED: Get distance and detection radius from the controller's public properties.
+                float distance = Vector3.Distance(controller.transform.position, controller.PlayerTransform.position);
+                normalizedValue = distance / controller.DetectionRadius;
                 break;
 
             case ConsiderationType.HasStatusEffect:
                 // This is a placeholder for a future implementation.
-                // You would need to add a way to check a target's active status effects.
-                // For now, it will return 0.
                 break;
         }
 

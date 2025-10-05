@@ -32,15 +32,18 @@ public class EnemyHealth : MonoBehaviour
         // Check if the enemy has died.
         if (_stats.currentHealth <= 0)
         {
-            Die();
+            // We no longer call Die() from here. The EnemyDeadState will call it.
         }
     }
 
     /// <summary>
     /// Handles the death of the enemy, firing events and returning it to the object pool.
+    /// This is now PUBLIC so the EnemyDeadState can call it.
     /// </summary>
-    private void Die()
+    public void Die()
     {
+        if (_isDead) return; // Prevent Die from being called multiple times
+
         _isDead = true;
         Debug.Log($"{gameObject.name} has died.");
 
@@ -59,11 +62,15 @@ public class EnemyHealth : MonoBehaviour
     }
 
     /// <summary>
-    /// Resets the health state of this enemy. Called by the EnemyController when it's reused from the pool.
+    /// Resets the health state of this enemy. Called when it's reused from the pool.
     /// </summary>
     public void ResetHealth()
     {
         _isDead = false;
         // The stats component will handle restoring the health value to full.
+        if (_stats != null)
+        {
+            _stats.RestoreAllResources();
+        }
     }
 }

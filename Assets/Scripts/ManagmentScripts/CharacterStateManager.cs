@@ -1,87 +1,80 @@
 using System;
 using UnityEngine;
 
-// This component manages the character's current state and enforces the rules of combat.
-// It communicates with the Animator and other components to control character behavior.
-[RequireComponent(typeof(Animator), typeof(CharacterStatsBase))]
+[RequireComponent(typeof(Animator), typeof(PlayerMovement), typeof(PlayerStats))]
 public class CharacterStateManager : MonoBehaviour
 {
-    // An event that fires whenever the state changes, allowing other scripts to react.
-    public event Action<CharacterState> OnStateChanged;
+    // --- State Machine ---
+    private PlayerBaseState _currentState;
+    private PlayerStateFactory _states;
 
-    // Public properties to allow other scripts to easily check the character's status.
-    public CharacterState CurrentState { get; private set; }
-    public bool CanTakeStaggerDamage => CurrentState != CharacterState.Staggered && CurrentState != CharacterState.KnockedDown && CurrentState != CharacterState.Countered;
-    public bool CanAct => CurrentState == CharacterState.Idle || CurrentState == CharacterState.Moving;
-
-    // Component references
-    private Animator _animator;
-    private CharacterStatsBase _stats;
+    // --- Properties for States to Access ---
+    // These act as the "context" for the individual state classes.
+    public PlayerBaseState CurrentState => _currentState;
+    public Animator Animator { get; private set; }
+    public PlayerMovement PlayerMovement { get; private set; }
+    public bool IsMovementPressed { get; set; }
+    public float CurrentActionTime { get; set; } // Set by PlayerSkillManager before activating a skill
+    public Skill CurrentSkillInUse { get; set; } // Set by PlayerSkillManager to check for super armor
 
     private void Awake()
     {
-        _animator = GetComponent<Animator>();
-        _stats = GetComponent<CharacterStatsBase>();
-        CurrentState = CharacterState.Idle;
+        // Get references to all necessary components
+        Animator = GetComponent<Animator>();
+        PlayerMovement = GetComponent<PlayerMovement>();
+
+        // Setup the State Machine
+        _states = new PlayerStateFactory(this);
+        _currentState = _states.Idle(); // Start in the Idle state
+        _currentState.EnterState();
     }
 
-    /// <summary>
-    /// The central method for changing the character's state. This enforces all game rules.
-    /// </summary>
-    public void ChangeState(CharacterState newState)
+    private void Start()
     {
-        if (CurrentState == newState) return;
+        // Subscribe to the stats update event to check for death
+        GetComponent<PlayerStats>().OnStatsUpdated += CheckForDeath;
+    }
 
-        // --- State Transition Logic ---
-        // Handle the re-stagger mechanic
-        if (CurrentState == CharacterState.Staggered && newState == CharacterState.KnockedDown)
-        {
-            Debug.Log("Stagger interrupted by Knockdown!");
-        }
-        // Prevent changing state if in a non-interruptible state (unless it's a stagger, knockdown, or death)
-        else if (!CanAct && newState != CharacterState.Staggered && newState != CharacterState.KnockedDown && newState != CharacterState.Dead)
-        {
-            Debug.Log($"Cannot change state from {CurrentState} to {newState}. Action is in progress.");
-            return;
-        }
+    private void OnDestroy()
+    {
+        // Always unsubscribe from events
+        GetComponent<PlayerStats>().OnStatsUpdated -= CheckForDeath;
+    }
 
-        CurrentState = newState;
-        OnStateChanged?.Invoke(newState); // Fire the event for other scripts to hear.
-
-        // --- Animation Triggering ---
-        // This is where you would trigger the animations for each state.
-        switch (newState)
-        {
-            case CharacterState.Idle:
-                // Example: _animator.SetBool("IsMoving", false);
-                break;
-            case CharacterState.Moving:
-                // Example: _animator.SetBool("IsMoving", true);
-                break;
-            case CharacterState.ActivatingSkill:
-                // The skill manager will likely trigger the specific skill animation.
-                break;
-            case CharacterState.Staggered:
-                _animator.SetTrigger("StaggerTrigger");
-                break;
-            case CharacterState.KnockedDown:
-                _animator.SetTrigger("KnockdownTrigger");
-                break;
-            case CharacterState.Countered:
-                _animator.SetTrigger("CounteredTrigger");
-                break;
-            case CharacterState.Dead:
-                _animator.SetTrigger("DeathTrigger");
-                break;
-        }
+    private void Update()
+    {
+        // The core of the state machine: simply call the current state's Update method.
+        _currentState.UpdateState();
     }
 
     /// <summary>
-    /// This public method is intended to be called by an Animation Event at the end of
-    /// a state's animation clip (e.g., Staggered, KnockedDown, Countered) to return the character to Idle.
+    /// The main method for transitioning between states.
+    /// </summary>
+    public void SwitchState(PlayerBaseState newState)
+    {
+        // Call the Exit method of the current state
+        _currentState.ExitState();
+
+        // Set the new state and call its Enter method
+        _currentState = newState;
+        _currentState.EnterState();
+    }
+
+    /// <summary>
+    /// This public method is called by Animation Events at the end of clips
+    /// like Stagger, Knockdown, etc., to return the character to a neutral state.
     /// </summary>
     public void ReturnToIdleState()
     {
-        ChangeState(CharacterState.Idle);
+        SwitchState(_states.Idle());
+    }
+
+    private void CheckForDeath()
+    {
+        // If health is 0 and we are not already in the Dead state, switch to it.
+        if (GetComponent<PlayerStats>().currentHealth <= 0 && !(_currentState is PlayerDeadState))
+        {
+            SwitchState(_states.Dead());
+        }
     }
 }

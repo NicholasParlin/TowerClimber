@@ -10,6 +10,8 @@ public class EffectInSequence
     public float delayAfterEffect = 0f;
 }
 
+// The class declaration should be "public class Skill : ScriptableObject"
+// If your file has "public abstract class Item : ScriptableObject", you have opened the wrong file.
 public class Skill : ScriptableObject
 {
     [Header("Core Information")]
@@ -28,6 +30,9 @@ public class Skill : ScriptableObject
     [Header("Mechanics")]
     public float baseActivationTime = 0.5f;
     public float cooldown = 1f;
+    // NEW PROPERTY: Add this boolean to your Skill script.
+    [Tooltip("If checked, the player cannot be staggered or knocked down while activating this skill.")]
+    public bool hasSuperArmor = false;
 
     [Header("Resource Costs")]
     public float manaCost = 0;
@@ -42,7 +47,7 @@ public class Skill : ScriptableObject
     [Tooltip("The base score or 'desire' for an AI to use this skill.")]
     public float baseUtilityScore = 20f;
     [Tooltip("A list of considerations that will modify the base score.")]
-    public List<AIAction> aiActions; // This is the new line you need to add
+    public List<AIAction> aiActions;
 
     public IEnumerator Activate(SkillManagerBase skillManager, GameObject caster, GameObject target)
     {
@@ -50,7 +55,6 @@ public class Skill : ScriptableObject
         {
             if (sequenceItem.effect != null)
             {
-                // CORRECTED: Now passes 'this' as the sourceSkill.
                 sequenceItem.effect.Execute(this, caster, target);
             }
 

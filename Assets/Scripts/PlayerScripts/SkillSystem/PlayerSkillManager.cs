@@ -7,14 +7,16 @@ using System.Linq;
 [RequireComponent(typeof(BuffManager))]
 [RequireComponent(typeof(PlayerStats))]
 [RequireComponent(typeof(PlayerTargeting))]
+[RequireComponent(typeof(CharacterStateManager))] // Make sure it has a state manager
 public class PlayerSkillManager : SkillManagerBase
 {
     [Header("Player-Specific Settings")]
     [SerializeField] private List<Skill> _startingSkills = new List<Skill>();
     [SerializeField] private int currencyRewardForDuplicateSkill = 100;
 
-    public event Action OnSkillActivationStart;
-    public event Action OnSkillActivationEnd;
+    // These events are no longer needed as the state machine handles these transitions.
+    // public event Action OnSkillActivationStart;
+    // public event Action OnSkillActivationEnd;
 
     private List<Skill> _activePassives = new List<Skill>();
     private Dictionary<SkillAcquisitionCategory, int> _skillsLearnedPerCategory = new Dictionary<SkillAcquisitionCategory, int>();
@@ -24,6 +26,8 @@ public class PlayerSkillManager : SkillManagerBase
     private BuffManager _buffManager;
     private PlayerStats _playerStats;
     private PlayerTargeting _playerTargeting;
+    private CharacterStateManager _stateManager; // NEW: Reference to the state manager
+    private PlayerStateFactory _stateFactory; // NEW: Reference to the state factory
 
     #region Save System Integration
     [System.Serializable]
@@ -81,17 +85,12 @@ public class PlayerSkillManager : SkillManagerBase
         _buffManager = GetComponent<BuffManager>();
         _playerStats = GetComponent<PlayerStats>();
         _playerTargeting = GetComponent<PlayerTargeting>();
+        _stateManager = GetComponent<CharacterStateManager>(); // NEW: Get the component
+        _stateFactory = new PlayerStateFactory(_stateManager); // NEW: Initialize the factory
         InitializeSkillCaps();
     }
 
-    private void Start()
-    {
-        // Register this manager with the SkillbarManager to create a direct link.
-        if (SkillbarManager.Instance != null)
-        {
-            SkillbarManager.Instance.RegisterPlayerSkillManager(this);
-        }
-    }
+    // The Update and redundant Start methods can be removed.
 
     private void InitializeNewCharacter()
     {
@@ -110,22 +109,19 @@ public class PlayerSkillManager : SkillManagerBase
         _skillCapsPerCategory[SkillAcquisitionCategory.QuestReward] = 15;
     }
 
-    protected override void Update()
-    {
-        base.Update();
-        if (_isActivating && _currentActivationTime <= 0) { OnSkillActivationEnd?.Invoke(); }
-    }
-
     protected override void ActivateSkill(Skill skill, GameObject target)
     {
         SpendResources(skill);
         StartCoroutine(skill.Activate(this, this.gameObject, target));
 
+        // MODIFIED: Calculate activation time and switch state
         float reductionPercent = Mathf.Sqrt(_stats.Dexterity.Value / 2500f);
         float finalActivationTime = skill.baseActivationTime * (1 - reductionPercent);
+        _stateManager.CurrentActionTime = Mathf.Max(0.05f, finalActivationTime);
 
-        _currentActivationTime = Mathf.Max(0.05f, finalActivationTime);
-        _isActivating = true;
+        // Pass the skill itself to the state manager so it knows about super armor
+        _stateManager.CurrentSkillInUse = skill;
+        _stateManager.SwitchState(_stateFactory.ActivatingSkill());
     }
 
     public bool TryLearnNewSkill(Skill skillToLearn, SkillAcquisitionCategory category)
@@ -156,7 +152,7 @@ public class PlayerSkillManager : SkillManagerBase
     {
         if (CanUseSkill(skill))
         {
-            OnSkillActivationStart?.Invoke();
+            // The OnSkillActivationStart event is no longer needed here
             ActivateSkill(skill, target);
         }
     }
@@ -170,7 +166,6 @@ public class PlayerSkillManager : SkillManagerBase
         }
     }
 
-    // NEW: A more direct method for the SkillbarManager to call.
     public void AttemptToUseSkillByReference(Skill skillToUse)
     {
         if (skillToUse.passiveEffectToApply != null) return;

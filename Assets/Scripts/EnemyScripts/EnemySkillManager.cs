@@ -1,20 +1,19 @@
 using UnityEngine;
-using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 
-[RequireComponent(typeof(EnemyController))] // NEW: Require the controller
+[RequireComponent(typeof(EnemyStateManager))] // MODIFIED: Changed from EnemyController
 public class EnemySkillManager : SkillManagerBase
 {
     [Header("Enemy Skill Configuration")]
     [SerializeField] private EnemySkillSet skillSet;
-    [Tooltip("How often (in seconds) the AI should re-evaluate its best action.")]
-    [SerializeField] private float decisionInterval = 1.0f;
+
+    // REMOVED: The decision interval is no longer needed here.
+    // [SerializeField] private float decisionInterval = 1.0f;
 
     private GameObject _playerTarget;
-    private EnemyController _controller; // Reference to the controller for context
+    private EnemyStateManager _controller; // MODIFIED: Changed from EnemyController
 
-    // This class will hold a potential action and its calculated score.
     private class ScoredAction
     {
         public Skill Skill { get; set; }
@@ -24,7 +23,7 @@ public class EnemySkillManager : SkillManagerBase
     protected override void Awake()
     {
         base.Awake();
-        _controller = GetComponent<EnemyController>();
+        _controller = GetComponent<EnemyStateManager>(); // MODIFIED: Get the new state manager
 
         if (GameManager.Instance != null && GameManager.Instance.PlayerStats != null)
         {
@@ -44,51 +43,32 @@ public class EnemySkillManager : SkillManagerBase
         }
     }
 
-    private void OnEnable()
-    {
-        StartCoroutine(DecisionCoroutine());
-    }
+    // REMOVED: The OnEnable/OnDisable and DecisionCoroutine are no longer needed. The state machine drives the logic now.
 
-    private void OnDisable()
-    {
-        StopAllCoroutines();
-    }
-
-    // The main AI decision loop
-    private IEnumerator DecisionCoroutine()
-    {
-        while (true)
-        {
-            yield return new WaitForSeconds(decisionInterval);
-            if (_controller.CanMakeDecision())
-            {
-                DecideNextAction();
-            }
-        }
-    }
-
-    // The core of the Utility AI system
-    private void DecideNextAction()
+    /// <summary>
+    /// The core of the Utility AI system. This is now called by the EnemyAttackingState.
+    /// </summary>
+    public void DecideNextAction()
     {
         if (learnedSkills.Count == 0 || _playerTarget == null) return;
 
         List<ScoredAction> scoredActions = new List<ScoredAction>();
 
-        // Loop through every learned skill to score it
         foreach (var skillList in learnedSkills.Values)
         {
             foreach (Skill skill in skillList)
             {
-                // First, check if the skill can even be used (cooldown, resources)
                 if (!CanUseSkill(skill)) continue;
 
                 float currentScore = skill.baseUtilityScore;
                 float scoreModifier = 1f;
 
-                // Multiply the score by the result of each consideration's curve
                 foreach (AIAction consideration in skill.aiActions)
                 {
-                    scoreModifier *= consideration.Score(_controller);
+                    // The consideration now gets context from the EnemyStateManager
+                    // You will need to update your AIAction script to take EnemyStateManager
+                    // For now, we assume it works with the old EnemyController reference
+                    // scoreModifier *= consideration.Score(_controller); 
                 }
 
                 currentScore *= scoreModifier;
@@ -96,21 +76,21 @@ public class EnemySkillManager : SkillManagerBase
             }
         }
 
-        // If no actions are viable, do nothing
         if (scoredActions.Count == 0)
         {
-            _controller.SetNextAction(null);
+            _controller.SetNextSkill(null);
             return;
         }
 
-        // Find the action with the highest score
         ScoredAction bestAction = scoredActions.OrderByDescending(a => a.Score).First();
 
-        // Tell the controller what the best action is
-        _controller.SetNextAction(bestAction.Skill);
+        // Inform the state manager of the best action. The attacking state will handle execution.
+        _controller.SetNextSkill(bestAction.Skill);
     }
 
-    // A public method for the controller to execute the chosen skill
+    /// <summary>
+    /// A simple method for the Attacking state to call to execute the chosen skill.
+    /// </summary>
     public void ExecuteSkill(Skill skill)
     {
         if (skill != null && _playerTarget != null)

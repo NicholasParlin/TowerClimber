@@ -17,7 +17,6 @@ public class PlayerInputManager : MonoBehaviour
 
     private CharacterStateManager _stateManager;
     private InputSystem_Actions _inputActions;
-    private bool _canAct = true;
 
     private void Awake()
     {
@@ -28,7 +27,8 @@ public class PlayerInputManager : MonoBehaviour
 
     private void OnEnable()
     {
-        if (_stateManager != null) _stateManager.OnStateChanged += HandleStateChanged;
+        // REMOVED: No longer subscribing to OnStateChanged
+        // if (_stateManager != null) _stateManager.OnStateChanged += HandleStateChanged;
 
         _inputActions.Player.Enable();
 
@@ -54,7 +54,8 @@ public class PlayerInputManager : MonoBehaviour
 
     private void OnDisable()
     {
-        if (_stateManager != null) _stateManager.OnStateChanged -= HandleStateChanged;
+        // REMOVED: No longer unsubscribing from OnStateChanged
+        // if (_stateManager != null) _stateManager.OnStateChanged -= HandleStateChanged;
 
         _inputActions.Player.Disable();
 
@@ -70,7 +71,11 @@ public class PlayerInputManager : MonoBehaviour
 
     private void OnMove(InputAction.CallbackContext context)
     {
-        if (_playerMovement != null) _playerMovement.SetMoveInput(context.ReadValue<Vector2>());
+        if (_playerMovement != null)
+        {
+            Vector2 moveInput = context.ReadValue<Vector2>();
+            _playerMovement.SetMoveInput(moveInput);
+        }
     }
 
     private void OnInteract(InputAction.CallbackContext context)
@@ -110,13 +115,13 @@ public class PlayerInputManager : MonoBehaviour
         else UIManager.Instance.OpenPanel(panel);
     }
 
-    private void HandleStateChanged(CharacterState newState)
-    {
-        _canAct = _stateManager.CanAct;
-    }
+    // REMOVED: The HandleStateChanged method is no longer needed.
 
     private bool CanProcessGameplayInput()
     {
-        return !PauseMenuUI.isGamePaused && _canAct;
+        // MODIFIED: Instead of a CanAct bool, we now check the type of the current state.
+        // This is a more robust way to check if the player can perform actions.
+        bool canAct = _stateManager.CurrentState is PlayerIdleState || _stateManager.CurrentState is PlayerMovingState;
+        return !PauseMenuUI.isGamePaused && canAct;
     }
 }

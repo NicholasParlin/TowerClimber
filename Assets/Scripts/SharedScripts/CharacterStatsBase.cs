@@ -59,11 +59,18 @@ public class CharacterStatsBase : MonoBehaviour
     public float maxStagger { get; protected set; }
     public float currentStagger { get; protected set; }
 
+    // MODIFIED: This is now a private reference, as other scripts should go through the state machine.
     private CharacterStateManager _stateManager;
+
+    // NEW: We need a reference to the factory to create states.
+    private PlayerStateFactory _stateFactory;
 
     protected virtual void Awake()
     {
         _stateManager = GetComponent<CharacterStateManager>();
+        // NEW: Initialize the state factory
+        _stateFactory = new PlayerStateFactory(_stateManager);
+
         InitializeStatList();
         SubscribeToStatChanges();
         RecalculateAllDerivedStats();
@@ -230,6 +237,11 @@ public class CharacterStatsBase : MonoBehaviour
     public void TakeStaggerDamage(float staggerPower)
     {
         if (staggerPower <= 0) return;
+
+        // Check if the current state can be interrupted by stagger
+        bool canBeStaggered = _stateManager.CurrentState is PlayerIdleState || _stateManager.CurrentState is PlayerMovingState;
+        if (!canBeStaggered) return;
+
         currentStagger -= staggerPower;
         Debug.Log($"{gameObject.name} took {staggerPower} stagger damage. Current stagger: {currentStagger}");
 
@@ -237,13 +249,14 @@ public class CharacterStatsBase : MonoBehaviour
         {
             if (_stateManager != null)
             {
+                // MODIFIED: Use the new SwitchState method with the factory
                 if (staggerPower >= StaggerDamageThreshold.Value)
                 {
-                    _stateManager.ChangeState(CharacterState.KnockedDown);
+                    _stateManager.SwitchState(_stateFactory.KnockedDown());
                 }
                 else
                 {
-                    _stateManager.ChangeState(CharacterState.Staggered);
+                    _stateManager.SwitchState(_stateFactory.Staggered());
                 }
             }
             RestoreStagger();

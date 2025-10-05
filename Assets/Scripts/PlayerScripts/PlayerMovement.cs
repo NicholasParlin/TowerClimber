@@ -16,7 +16,6 @@ public class PlayerMovement : MonoBehaviour
     private CharacterController _controller;
     private CharacterStateManager _stateManager;
 
-    private bool _canMove = true;
     private Vector2 _currentInput = Vector2.zero;
 
     private void Awake()
@@ -30,38 +29,19 @@ public class PlayerMovement : MonoBehaviour
         }
     }
 
-    private void OnEnable()
-    {
-        if (_stateManager != null)
-        {
-            _stateManager.OnStateChanged += HandleStateChanged;
-        }
-    }
+    // Removed the OnEnable and OnDisable methods as they are no longer needed for this script.
 
-    private void OnDisable()
-    {
-        if (_stateManager != null)
-        {
-            _stateManager.OnStateChanged -= HandleStateChanged;
-        }
-    }
-
-    private void Update()
-    {
-        if (!_canMove)
-        {
-            _controller.Move(Vector3.zero);
-            return;
-        }
-        HandleMovement();
-    }
+    // No Update() method is needed here anymore, the state machine will drive movement.
 
     public void SetMoveInput(Vector2 moveInput)
     {
         _currentInput = moveInput;
+        // Inform the state manager if movement is being pressed. This is crucial for the state machine to work.
+        _stateManager.IsMovementPressed = moveInput.x != 0 || moveInput.y != 0;
     }
 
-    private void HandleMovement()
+    // This method is now PUBLIC so it can be called by PlayerMovingState.
+    public void HandleMovement()
     {
         Vector3 direction = new Vector3(_currentInput.x, 0f, _currentInput.y).normalized;
 
@@ -76,12 +56,5 @@ public class PlayerMovement : MonoBehaviour
         }
     }
 
-    private void HandleStateChanged(CharacterState newState)
-    {
-        _canMove = (newState == CharacterState.Idle || newState == CharacterState.Moving);
-        if (!_canMove)
-        {
-            _currentInput = Vector2.zero;
-        }
-    }
+    // The HandleStateChanged method has been removed as this logic is now controlled by the states themselves.
 }
